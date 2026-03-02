@@ -1,0 +1,10 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Optional if npm tooling is added later
+node_modules/
+dist/

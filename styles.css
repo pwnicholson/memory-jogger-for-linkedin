@@ -1,0 +1,63 @@
+#mjli-root {
+  position: fixed;
+  top: 96px;
+  right: 16px;
+  width: 320px;
+  z-index: 99999;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  padding: 12px;
+  font-family: Arial, sans-serif;
+}
+
+#mjli-root .mjli-header {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+#mjli-root .mjli-label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+#mjli-root .mjli-textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid #c7ccd1;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  box-sizing: border-box;
+}
+
+#mjli-root .mjli-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+#mjli-root .mjli-button {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #0a66c2;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#mjli-root .mjli-button:hover {
+  background: #004182;
+}
+
+#mjli-root .mjli-status {
+  font-size: 12px;
+  color: #2e7d32;
+}

@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Memory Jogger for LinkedIn",
+  "version": "0.1.0",
+  "description": "Add a private 'How I know them' note to LinkedIn profiles.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.linkedin.com/*"],
+  "action": {
+    "default_title": "Memory Jogger for LinkedIn",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/in/*"],
+      "js": ["content-script.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
