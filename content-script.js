@@ -1,4 +1,5 @@
 (() => {
+  console.log('[Memory Jogger] Content script loaded');
   const ROOT_ID = "mjli-root";
   let lastProfileKey = null;
   let editMode = false;
@@ -34,10 +35,14 @@
       document.querySelector('section[data-test-id*="profile"]'),
       document.querySelector('[class*="pv-profile"]'),
       document.querySelector('[class*="profile-section"]'),
-      document.body.querySelector('main')
+      document.querySelector('[class*="scaffold"]'),
+      document.querySelector('main'),
+      document.querySelector('[role="main"]')
     ];
 
-    return candidates.find((el) => el && el.offsetParent !== null) || document.body;
+    const found = candidates.find((el) => el && el.offsetParent !== null);
+    console.log('[Memory Jogger] Anchor search:', { found: !!found, element: found?.tagName });
+    return found || document.body;
   }
 
   function createPanel(profileKey, storageKey) {
@@ -60,6 +65,7 @@
 
     const anchor = findProfileHeaderAnchor();
     anchor.insertBefore(panel, anchor.firstChild);
+    console.log('[Memory Jogger] Panel injected into:', anchor.tagName);
 
     const closeBtn = panel.querySelector("#mjli-close");
     closeBtn.addEventListener("click", () => panel.remove());
@@ -162,6 +168,8 @@
 
   function renderForCurrentProfile() {
     const profileKey = getProfileKey();
+    console.log('[Memory Jogger] Current page:', { profileKey, url: window.location.href });
+    
     if (!profileKey) {
       removeExistingPanel();
       lastProfileKey = null;
@@ -174,6 +182,7 @@
 
     lastProfileKey = profileKey;
     const storageKey = `note:${profileKey}`;
+    console.log('[Memory Jogger] Creating panel for:', profileKey);
     createPanel(profileKey, storageKey);
   }
 
