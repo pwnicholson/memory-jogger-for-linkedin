@@ -256,6 +256,13 @@
       img.removeAttribute('title');
       img.removeAttribute('alt');
       
+      // Also handle parent link's title attribute (this is likely where "View [Name]'s graphic link" comes from)
+      const parentLink = img.closest('a');
+      const originalParentTitle = parentLink ? parentLink.title : null;
+      if (parentLink) {
+        parentLink.removeAttribute('title');
+      }
+      
       // Also disable data tooltips if they exist
       img.setAttribute('data-original-title', originalTitle);
       
@@ -285,6 +292,10 @@
           // Restore original attributes
           if (originalTitle) img.setAttribute('title', originalTitle);
           if (originalAlt) img.setAttribute('alt', originalAlt);
+          // Restore parent link's title if it had one
+          if (parentLink && originalParentTitle) {
+            parentLink.setAttribute('title', originalParentTitle);
+          }
         },
         { once: true }
       );
@@ -338,8 +349,8 @@
       img.dataset.mjliBadge = "true";
       img.dataset.mjliHasNote = "true"; // Mark image as having a note
       
-      // Add blue outline to the image itself
-      img.style.border = "2px solid #0a66c2";
+      // Add thick blue outline to the image itself
+      img.style.border = "4px solid #0a66c2";
       img.style.borderRadius = "50%";
       img.style.boxSizing = "border-box";
       
