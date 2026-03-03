@@ -209,6 +209,17 @@
     return text.substring(0, maxLength) + '...';
   }
 
+  function extractNameFromAlt(altText) {
+    // LinkedIn alt text format: "View [Name]'s graphic link" or "View [Name]'s profile"
+    // Extract just the name part
+    const match = altText.match(/^View\s+(.+?)'s\s+(graphic link|profile)/i);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+    // Fallback to original if pattern doesn't match
+    return altText;
+  }
+
   function createTooltip(name, noteText) {
     removeExistingTooltip();
     const tooltip = document.createElement("div");
@@ -268,6 +279,12 @@
       
       // Extract profile name from nearby elements (not from alt)
       let name = originalAlt || "Profile";
+      
+      // Clean the alt text if it follows LinkedIn's "View [Name]'s graphic link" format
+      if (name && name.toLowerCase().includes("view") && name.includes("'s")) {
+        name = extractNameFromAlt(name);
+      }
+      
       if (!name || name.toLowerCase() === "profile") {
         // Try to find name from nearby text
         const parent = img.closest("a, div[data-test-id], li");
