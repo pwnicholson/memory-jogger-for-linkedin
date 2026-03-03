@@ -62,40 +62,36 @@
   }
 
   function findCtaButtonsAnchor() {
-    // Find where to insert the panel - right after the CTA buttons area
-    // LinkedIn structure: main > [top-card section] > [buttons section] > [content sections]
-    
+    // Find the button container in the top card and insert right after it
     const main = document.querySelector('main');
     if (!main) {
       console.log('[Memory Jogger] No main element');
       return document.body;
     }
 
-    // Look for the section that contains the Message/Connect/Follow buttons
-    const allSections = main.querySelectorAll('section');
-    let insertTarget = null;
+    // Find the container with the action buttons
+    let buttonContainer = document.querySelector('[data-test-id="top-card-button-container"]');
+    
+    if (buttonContainer) {
+      // Insert after this button container
+      console.log('[Memory Jogger] Found button container');
+      return buttonContainer;
+    }
 
-    for (let section of allSections) {
-      const buttons = section.querySelectorAll('button');
-      for (let btn of buttons) {
-        if (btn.textContent.includes('Message') || btn.textContent.includes('Connect') || btn.textContent.includes('Follow')) {
-          // This is likely the CTA buttons section
-          // We want to insert after this section
-          insertTarget = section.nextElementSibling || section.parentElement;
-          console.log('[Memory Jogger] Found CTA section');
-          break;
+    // Fallback: find any section with Message/Connect/Follow buttons
+    const allButtons = main.querySelectorAll('button');
+    for (let btn of allButtons) {
+      if (btn.textContent.includes('Message') || btn.textContent.includes('Connect') || btn.textContent.includes('Follow')) {
+        buttonContainer = btn.closest('section, div[class*="button"], div[class*="action"]');
+        if (buttonContainer) {
+          console.log('[Memory Jogger] Found button section');
+          return buttonContainer;
         }
       }
-      if (insertTarget) break;
     }
 
-    // If we couldn't find by buttons, just use the main element
-    if (!insertTarget) {
-      insertTarget = main;
-      console.log('[Memory Jogger] Using main as fallback');
-    }
-
-    return insertTarget;
+    console.log('[Memory Jogger] No button container found, using main');
+    return main;
   }
 
   function createPanel(profileKey, storageKey) {
@@ -118,23 +114,17 @@
 
     const target = findCtaButtonsAnchor();
     
-    // If target is main, find a good insertion point inside it
-    if (target.tagName === 'MAIN') {
-      // Look for a section to insert into
-      const sections = target.querySelectorAll('section');
-      if (sections.length > 1) {
-        // Insert before the second section (first content section)
-        sections[1].parentNode.insertBefore(panel, sections[1]);
-      } else {
-        // Just append to main
-        target.appendChild(panel);
-      }
-    } else if (target.tagName === 'SECTION') {
-      // Insert after this section
+    // Insert right after the button container
+    if (target && target !== document.body) {
       target.parentNode.insertBefore(panel, target.nextSibling);
     } else {
-      // Default: append
-      target.appendChild(panel);
+      // Fallback to beginning of main
+      const main = document.querySelector('main');
+      if (main && main.firstChild) {
+        main.insertBefore(panel, main.firstChild);
+      } else {
+        document.body.appendChild(panel);
+      }
     }
 
     console.log('[Memory Jogger] Panel injected');
@@ -253,15 +243,28 @@
 
   function updateTooltipPosition(event, tooltip) {
     const rect = event.target.getBoundingClientRect();
-    tooltip.style.left = rect.left + "px";
-    tooltip.style.top = rect.top - tooltip.offsetHeight - 8 + "px";
+    let top = rect.top - tooltip.offsetHeight - 8;
+    let left = rect.left + rect.width / 2 - tooltip.offsetWidth / 2;
+    
+    // Keep tooltip within viewport
+    if (top < 10) top = rect.bottom + 8;
+    if (left < 10) left = 10;
+    if (left + tooltip.offsetWidth > window.innerWidth) {
+      left = window.innerWidth - tooltip.offsetWidth - 10;
+    }
+    
+    tooltip.style.left = left + "px";
+    tooltip.style.top = top + "px";
   }
 
   function addProfileImageHoverListener(img, profileKey) {
     const storageKey = `note:${profileKey}`;
 
     img.addEventListener("mouseenter", async () => {
+      console.log('[Memory Jogger] Hover on image for:', profileKey);
       const noteText = await storageGet(storageKey);
+      console.log('[Memory Jogger] Note text:', noteText ? noteText.substring(0, 30) : '(empty)');
+      
       if (!noteText.trim()) return; // Only show tooltip if there's a note
 
       // Extract profile name from alt text or nearby elements
@@ -275,6 +278,7 @@
         }
       }
 
+      console.log('[Memory Jogger] Showing tooltip for:', name);
       const tooltip = createTooltip(name, noteText);
       updateTooltipPosition({ target: img }, tooltip);
 
@@ -348,18 +352,27 @@
       // Look for the main profile avatar at the top of the page
       const topCard = document.querySelector('[data-test-id="top-card"]');
       if (topCard) {
-        const profileAvatar = topCard.querySelector('img[alt*="avatar"], img[alt*="profile"], button img:first-child');
-        if (profileAvatar && !profileAvatar.dataset.mjliProcessed) {
-          profileAvatar.dataset.mjliProcessed = "true";
-          const storageKey = `note:${profileKey}`;
-          addProfileImageHoverListener(profileAvatar, profileKey);
-          addIndicatorBadge(profileAvatar, profileKey);
-          console.log('[Memory Jogger] Processed main profile avatar');
+        // Find all images in top card and take the first substantial one (likely the avatar)
+        const topCardImages = topCard.querySelectorAll('img');
+        console.log('[Memory Jogger] Found', topCardImages.length, 'images in top card');
+        
+        for (let img of topCardImages) {
+          if (!img.dataset.mjliProcessed) {
+            // Check if this looks like a profile avatar (not tiny icon)
+            const rect = img.getBoundingClientRect();
+            if (rect.width > 50 && rect.height > 50) {
+              img.dataset.mjliProcessed = "true";
+              addProfileImageHoverListener(img, profileKey);
+              addIndicatorBadge(img, profileKey);
+              console.log('[Memory Jogger] Processed main profile avatar');
+              break; // Only process the first large image
+            }
+          }
         }
       }
     }
 
-    // Find all potential profile images across the page
+    // Find all other potential profile images across the page
     const allImages = document.querySelectorAll('img');
     console.log('[Memory Jogger] Scanning', allImages.length, 'images for profiles');
 
@@ -382,8 +395,8 @@
         if (profileKey) {
           img.dataset.mjliProcessed = "true";
           processed++;
-          addIndicatorBadge(img, profileKey);
           addProfileImageHoverListener(img, profileKey);
+          addIndicatorBadge(img, profileKey);
           return;
         }
       }
@@ -415,8 +428,8 @@
       if (profileKey) {
         img.dataset.mjliProcessed = "true";
         processed++;
-        addIndicatorBadge(img, profileKey);
         addProfileImageHoverListener(img, profileKey);
+        addIndicatorBadge(img, profileKey);
       }
     });
 
