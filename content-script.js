@@ -62,21 +62,15 @@
   }
 
   function findCtaButtonsAnchor() {
-    // Find the main element and insert at the top of its content (after the hero/top-card)
+    // Find the main element and insert at the very top (before the hero/top-card)
     const main = document.querySelector('main');
     if (!main) {
       console.log('[Memory Jogger] No main element');
       return document.body;
     }
 
-    // Get the first section (hero/top-card), return it so we insert after it
-    const firstSection = main.querySelector('section:first-of-type');
-    if (firstSection) {
-      console.log('[Memory Jogger] Found first section (top-card)');
-      return firstSection;
-    }
-
-    console.log('[Memory Jogger] No section found, using main');
+    // Return main itself so we can insert before its first child
+    console.log('[Memory Jogger] Using main for top insertion');
     return main;
   }
 
@@ -100,20 +94,14 @@
 
     const target = findCtaButtonsAnchor();
     
-    // Insert right after the target (top-card section)
-    if (target && target !== document.body) {
-      target.parentNode.insertBefore(panel, target.nextSibling);
-    } else if (target === document.body) {
+    // Insert at the very beginning of the target
+    if (target === document.body) {
       document.body.appendChild(panel);
     } else {
-      // Shouldn't happen, but fallback
-      const main = document.querySelector('main');
-      if (main) {
-        main.appendChild(panel);
-      }
+      target.insertBefore(panel, target.firstChild);
     }
 
-    console.log('[Memory Jogger] Panel injected after:', target?.tagName || 'unknown');
+    console.log('[Memory Jogger] Panel injected at top of:', target?.tagName || 'unknown');
 
     const closeBtn = panel.querySelector("#mjli-close");
     closeBtn.addEventListener("click", () => panel.remove());
@@ -216,12 +204,19 @@
     return div.innerHTML;
   }
 
+  function truncateText(text, maxLength) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+  }
+
   function createTooltip(name, noteText) {
     removeExistingTooltip();
     const tooltip = document.createElement("div");
     tooltip.id = TOOLTIP_ID;
     tooltip.className = "mjli-tooltip";
-    const displayText = noteText.trim() ? `${name} - ${noteText}` : name;
+    // Truncate both name and note to 60 chars total
+    const truncatedNote = truncateText(noteText, 60);
+    const displayText = `${name} - ${truncatedNote}`;
     tooltip.textContent = displayText;
     document.body.appendChild(tooltip);
     return tooltip;
@@ -253,13 +248,18 @@
       
       if (!noteText.trim()) return; // Only show tooltip if there's a note
 
-      // Suppress default browser tooltip by clearing title attribute temporarily
-      const originalTitle = img.getAttribute('title');
-      const originalAlt = img.getAttribute('alt');
+      // Save original attributes before clearing
+      const originalTitle = img.title;
+      const originalAlt = img.alt;
+      
+      // Completely remove the attributes to prevent browser tooltip
       img.removeAttribute('title');
-      img.setAttribute('alt', ''); // Clear alt to prevent browser tooltip
-
-      // Extract profile name from alt text or nearby elements
+      img.removeAttribute('alt');
+      
+      // Also disable data tooltips if they exist
+      img.setAttribute('data-original-title', originalTitle);
+      
+      // Extract profile name from nearby elements (not from alt)
       let name = originalAlt || "Profile";
       if (!name || name.toLowerCase() === "profile") {
         // Try to find name from nearby text
@@ -324,6 +324,7 @@
       // Check if a badge already exists on this container (avoid duplicates)
       if (container.querySelector(`.${INDICATOR_CLASS}`)) {
         img.dataset.mjliBadge = "true";
+        img.dataset.mjliHasNote = "true"; // Mark image as having a note
         return;
       }
 
@@ -335,6 +336,12 @@
       
       container.appendChild(indicator);
       img.dataset.mjliBadge = "true";
+      img.dataset.mjliHasNote = "true"; // Mark image as having a note
+      
+      // Add blue outline to the image itself
+      img.style.border = "2px solid #0a66c2";
+      img.style.borderRadius = "50%";
+      img.style.boxSizing = "border-box";
       
       console.log('[Memory Jogger] Badge added for:', profileKey);
     });

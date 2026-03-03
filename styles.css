@@ -187,18 +187,17 @@
 /* Profile image indicator badge */
 .mjli-indicator {
   position: absolute;
-  top: 0;
-  right: 0;
-  width: 24px;
-  height: 24px;
-  background: #0a66c2;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
+  top: -4px;
+  right: -4px;
+  font-size: 16px;
   z-index: 100;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  border: 1px solid #fff;
   line-height: 1;
+  background: none;
+  border: none;
+  padding: 0;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  box-shadow: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
