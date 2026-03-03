@@ -62,28 +62,32 @@
   }
 
   function findCtaButtonsAnchor() {
-    // Look for the top card section with action buttons
-    // LinkedIn's profile has a top-card area with Message, Follow, Connect buttons
+    // Find the main content area on a LinkedIn profile page
+    // We want to inject into the main column (not full page width)
     
-    // Try multiple strategies to find the right insertion point
-    const candidates = [
-      // Most recent LinkedIn profile structure
-      document.querySelector('[data-test-id="top-card"]'),
-      document.querySelector('[data-test-id*="top-card"]'),
-      // Fallback: find the button container
-      document.querySelector('[data-test-id="top-card-button-container"]')?.parentElement,
-      // Look for the section that contains Message/Follow/Connect
-      Array.from(document.querySelectorAll('button')).find(
-        (btn) => btn.textContent.includes('Message') || btn.textContent.includes('Connect') || btn.textContent.includes('Follow')
-      )?.closest('section'),
-      // Last resort: find first major section after the hero
-      document.querySelector('section:nth-of-type(2)'),
-      document.querySelector('main')
-    ].filter(Boolean);
+    // Strategy: Find the first major section/article in main that's not the header
+    const main = document.querySelector('main');
+    if (!main) {
+      console.log('[Memory Jogger] No main element found');
+      return document.body;
+    }
 
-    const found = candidates[0];
-    console.log('[Memory Jogger] CTA anchor found:', { found: !!found, tag: found?.tagName, testId: found?.getAttribute('data-test-id') });
-    return found || document.body;
+    // Look for the section right after the top card (hero/profile header)
+    const sections = main.querySelectorAll('section');
+    if (sections.length > 1) {
+      // Second section is usually the first content section after the header
+      console.log('[Memory Jogger] Using second section in main');
+      return sections[1];
+    }
+
+    if (sections.length > 0) {
+      console.log('[Memory Jogger] Using first section in main');
+      return sections[0];
+    }
+
+    // Fallback: insert at start of main
+    console.log('[Memory Jogger] Using main element directly');
+    return main;
   }
 
   function createPanel(profileKey, storageKey) {
@@ -105,14 +109,15 @@
     `;
 
     const anchor = findCtaButtonsAnchor();
-    // Insert just before the anchor (or at end of parent if anchor is body)
-    if (anchor === document.body) {
-      document.body.appendChild(panel);
+    
+    // Insert the panel as the first child of the anchor
+    if (anchor.firstChild) {
+      anchor.insertBefore(panel, anchor.firstChild);
     } else {
-      anchor.parentNode.insertBefore(panel, anchor);
+      anchor.appendChild(panel);
     }
 
-    console.log('[Memory Jogger] Panel injected near:', anchor.tagName);
+    console.log('[Memory Jogger] Panel injected into:', { tag: anchor.tagName, id: anchor.id, class: anchor.className });
 
     const closeBtn = panel.querySelector("#mjli-close");
     closeBtn.addEventListener("click", () => panel.remove());
@@ -272,37 +277,42 @@
 
     storageGet(storageKey).then((noteText) => {
       if (!noteText.trim()) {
-        console.log('[Memory Jogger] No note for:', profileKey);
         return; // Only add indicator if there's a note
       }
 
-      // Check if indicator already exists on this image
-      if (img.dataset.mjliBadge) return;
+      // Check if badge already exists for this image
+      if (img.dataset.mjliBadge === "true") return;
 
-      // Find or create a container for the badge
-      let container = img.closest("a, button, [role='button']");
+      // Find a suitable container - prefer the closest link or button
+      let container = img.closest('a, button');
       
-      if (!container || container === document.body) {
-        // Wrap the image if we can't find a suitable parent
+      // If no link/button parent, try to find the element containing the image
+      if (!container) {
         container = img.parentElement;
       }
 
-      if (!container) return;
+      if (!container || container === document.body) {
+        console.log('[Memory Jogger] No suitable container for badge');
+        return;
+      }
 
-      // Make container position relative so badge is positioned relative to it
-      const currentPosition = window.getComputedStyle(container).position;
-      if (currentPosition === "static") {
+      // Ensure container is positioned so the badge can be positioned relative to it
+      const style = window.getComputedStyle(container);
+      if (style.position === "static") {
         container.style.position = "relative";
       }
 
-      // Check if badge already exists on this container
-      if (container.querySelector(`.${INDICATOR_CLASS}[data-mjli-img]`)) return;
+      // Check if a badge already exists on this container (avoid duplicates)
+      if (container.querySelector(`.${INDICATOR_CLASS}`)) {
+        img.dataset.mjliBadge = "true";
+        return;
+      }
 
       const indicator = document.createElement("div");
       indicator.className = INDICATOR_CLASS;
-      indicator.setAttribute("data-mjli-img", profileKey);
-      indicator.title = "You have a memory note for this profile";
-      indicator.innerHTML = "📝";
+      indicator.setAttribute("data-profile-key", profileKey);
+      indicator.title = "Memory note saved for this profile";
+      indicator.textContent = "📝";
       
       container.appendChild(indicator);
       img.dataset.mjliBadge = "true";
@@ -312,52 +322,70 @@
   }
 
   function findAndEnhanceAllProfileImages() {
-    // Find all potential profile images - be very broad
+    // Find all potential profile images - look for typical avatar/profile pic patterns
     const allImages = document.querySelectorAll('img');
-    console.log('[Memory Jogger] Scanning images:', allImages.length);
+    console.log('[Memory Jogger] Scanning', allImages.length, 'images for profiles');
 
+    let processed = 0;
     allImages.forEach((img) => {
       // Skip if already processed
       if (img.dataset.mjliProcessed) return;
 
-      // Try to find the profile URL from the image's parent chain
+      // Skip obvious non-profile images (company logos, icons smaller than avatars, etc)
+      if (img.alt && (img.alt.toLowerCase().includes('logo') || img.alt.toLowerCase().includes('icon'))) {
+        return;
+      }
+
       let profileKey = null;
-      let link = img.closest('a[href*="/in/"]');
-      
-      if (link) {
-        profileKey = getProfileKeyFromUrl(link.href);
-      } else {
-        // Check if there's a profile link anywhere nearby in the parent tree
-        let parent = img.parentElement;
-        for (let i = 0; i < 5 && parent; i++) {
-          const profileLink = parent.querySelector('a[href*="/in/"]');
-          if (profileLink) {
-            profileKey = getProfileKeyFromUrl(profileLink.href);
+
+      // Strategy 1: Direct parent is a profile link
+      const directLink = img.closest('a[href*="/in/"]');
+      if (directLink) {
+        profileKey = getProfileKeyFromUrl(directLink.href);
+        if (profileKey) {
+          img.dataset.mjliProcessed = "true";
+          processed++;
+          addIndicatorBadge(img, profileKey);
+          addProfileImageHoverListener(img, profileKey);
+          return;
+        }
+      }
+
+      // Strategy 2: Search siblings and nearby elements for profile links
+      let searchParent = img.parentElement;
+      for (let depth = 0; depth < 4 && searchParent; depth++) {
+        const profileLinks = searchParent.querySelectorAll('a[href*="/in/"]');
+        if (profileLinks.length > 0) {
+          profileKey = getProfileKeyFromUrl(profileLinks[0].href);
+          if (profileKey) {
             break;
           }
-          parent = parent.parentElement;
         }
+        searchParent = searchParent.parentElement;
       }
 
-      // Also check button data attributes that might indicate profile
+      // Strategy 3: Check if image is in a card with a profile link somewhere
       if (!profileKey) {
-        const btn = img.closest('button[data-test-id*="avatar"], button[data-test-id*="profile"], a[data-test-id*="profile"]');
-        if (btn) {
-          const profileLink = btn.querySelector('a[href*="/in/"]');
+        const card = img.closest('[data-test-id*="feed"], [data-test-id*="card"], article, li');
+        if (card) {
+          const profileLink = card.querySelector('a[href*="/in/"]');
           if (profileLink) {
             profileKey = getProfileKeyFromUrl(profileLink.href);
           }
         }
       }
 
-      if (!profileKey) return;
-
-      img.dataset.mjliProcessed = "true";
-      console.log('[Memory Jogger] Processing image for:', profileKey);
-
-      addIndicatorBadge(img, profileKey);
-      addProfileImageHoverListener(img, profileKey);
+      if (profileKey) {
+        img.dataset.mjliProcessed = "true";
+        processed++;
+        addIndicatorBadge(img, profileKey);
+        addProfileImageHoverListener(img, profileKey);
+      }
     });
+
+    if (processed > 0) {
+      console.log('[Memory Jogger] Processed', processed, 'images');
+    }
   }
 
   function updateAllProfileImageIndicators() {
