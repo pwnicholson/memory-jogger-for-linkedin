@@ -11,13 +11,13 @@
 
   function storageGet(key) {
     return new Promise((resolve) => {
-      chrome.storage.local.get([key], (result) => resolve(result[key] || ""));
+      chrome.storage.sync.get([key], (result) => resolve(result[key] || ""));
     });
   }
 
   function storageSet(key, value) {
     return new Promise((resolve) => {
-      chrome.storage.local.set({ [key]: value }, () => resolve());
+      chrome.storage.sync.set({ [key]: value }, () => resolve());
     });
   }
 
