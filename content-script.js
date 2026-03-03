@@ -17,13 +17,37 @@
 
   function storageGet(key) {
     return new Promise((resolve) => {
-      chrome.storage.sync.get([key], (result) => resolve(result[key] || ""));
+      try {
+        chrome.storage.sync.get([key], (result) => {
+          if (chrome.runtime.lastError) {
+            console.warn('[Memory Jogger] Storage error on get:', chrome.runtime.lastError);
+            resolve("");
+          } else {
+            resolve(result[key] || "");
+          }
+        });
+      } catch (e) {
+        console.error('[Memory Jogger] Storage exception:', e);
+        resolve("");
+      }
     });
   }
 
   function storageSet(key, value) {
     return new Promise((resolve) => {
-      chrome.storage.sync.set({ [key]: value }, () => resolve());
+      try {
+        chrome.storage.sync.set({ [key]: value }, () => {
+          if (chrome.runtime.lastError) {
+            console.warn('[Memory Jogger] Storage error on set:', chrome.runtime.lastError);
+          } else {
+            console.log('[Memory Jogger] Saved:', key);
+          }
+          resolve();
+        });
+      } catch (e) {
+        console.error('[Memory Jogger] Storage exception:', e);
+        resolve();
+      }
     });
   }
 
@@ -38,20 +62,28 @@
   }
 
   function findCtaButtonsAnchor() {
-    // Look for the action buttons container (Message, Follow, Connect)
+    // Look for the top card section with action buttons
+    // LinkedIn's profile has a top-card area with Message, Follow, Connect buttons
+    
+    // Try multiple strategies to find the right insertion point
     const candidates = [
-      document.querySelector('[data-test-id="top-card-button-container"]'),
-      document.querySelector('[class*="top-card"]'),
-      document.evaluate(
-        "//button[contains(., 'Message') or contains(., 'Follow') or contains(., 'Connect')]",
-        document,
-        null,
-        XPathResult.FIRST_ORDERED_NODE_TYPE,
-        null
-      ).singleNodeValue?.closest('[class*="top-card"], section, div[data-test-id*="top"]')
+      // Most recent LinkedIn profile structure
+      document.querySelector('[data-test-id="top-card"]'),
+      document.querySelector('[data-test-id*="top-card"]'),
+      // Fallback: find the button container
+      document.querySelector('[data-test-id="top-card-button-container"]')?.parentElement,
+      // Look for the section that contains Message/Follow/Connect
+      Array.from(document.querySelectorAll('button')).find(
+        (btn) => btn.textContent.includes('Message') || btn.textContent.includes('Connect') || btn.textContent.includes('Follow')
+      )?.closest('section'),
+      // Last resort: find first major section after the hero
+      document.querySelector('section:nth-of-type(2)'),
+      document.querySelector('main')
     ].filter(Boolean);
 
-    return candidates[0] || document.body;
+    const found = candidates[0];
+    console.log('[Memory Jogger] CTA anchor found:', { found: !!found, tag: found?.tagName, testId: found?.getAttribute('data-test-id') });
+    return found || document.body;
   }
 
   function createPanel(profileKey, storageKey) {
@@ -239,47 +271,89 @@
     const storageKey = `note:${profileKey}`;
 
     storageGet(storageKey).then((noteText) => {
-      if (!noteText.trim()) return; // Only add indicator if there's a note
+      if (!noteText.trim()) {
+        console.log('[Memory Jogger] No note for:', profileKey);
+        return; // Only add indicator if there's a note
+      }
 
-      // Check if indicator already exists
-      if (img.querySelector(`.${INDICATOR_CLASS}`)) return;
+      // Check if indicator already exists on this image
+      if (img.dataset.mjliBadge) return;
 
-      // Add indicator to image container
-      const container = img.closest("a, span, div");
-      if (!container || container === document.body) return;
+      // Find or create a container for the badge
+      let container = img.closest("a, button, [role='button']");
+      
+      if (!container || container === document.body) {
+        // Wrap the image if we can't find a suitable parent
+        container = img.parentElement;
+      }
 
-      // Position relative to container
-      if (window.getComputedStyle(container).position === "static") {
+      if (!container) return;
+
+      // Make container position relative so badge is positioned relative to it
+      const currentPosition = window.getComputedStyle(container).position;
+      if (currentPosition === "static") {
         container.style.position = "relative";
       }
 
+      // Check if badge already exists on this container
+      if (container.querySelector(`.${INDICATOR_CLASS}[data-mjli-img]`)) return;
+
       const indicator = document.createElement("div");
       indicator.className = INDICATOR_CLASS;
+      indicator.setAttribute("data-mjli-img", profileKey);
       indicator.title = "You have a memory note for this profile";
       indicator.innerHTML = "📝";
+      
       container.appendChild(indicator);
+      img.dataset.mjliBadge = "true";
+      
+      console.log('[Memory Jogger] Badge added for:', profileKey);
     });
   }
 
   function findAndEnhanceAllProfileImages() {
-    // Find all profile images across the page
-    const profileImages = document.querySelectorAll(
-      'a[href*="/in/"] img, img[alt*="Avatar"], button[data-test-id*="profile"] img'
-    );
+    // Find all potential profile images - be very broad
+    const allImages = document.querySelectorAll('img');
+    console.log('[Memory Jogger] Scanning images:', allImages.length);
 
-    console.log('[Memory Jogger] Found profile images:', profileImages.length);
-
-    profileImages.forEach((img) => {
-      // Get the profile key from the nearest link
-      const link = img.closest('a[href*="/in/"]') || img.closest('[href*="/in/"]');
-      if (!link) return;
-
-      const profileKey = getProfileKeyFromUrl(link.href);
-      if (!profileKey) return;
-
+    allImages.forEach((img) => {
       // Skip if already processed
       if (img.dataset.mjliProcessed) return;
+
+      // Try to find the profile URL from the image's parent chain
+      let profileKey = null;
+      let link = img.closest('a[href*="/in/"]');
+      
+      if (link) {
+        profileKey = getProfileKeyFromUrl(link.href);
+      } else {
+        // Check if there's a profile link anywhere nearby in the parent tree
+        let parent = img.parentElement;
+        for (let i = 0; i < 5 && parent; i++) {
+          const profileLink = parent.querySelector('a[href*="/in/"]');
+          if (profileLink) {
+            profileKey = getProfileKeyFromUrl(profileLink.href);
+            break;
+          }
+          parent = parent.parentElement;
+        }
+      }
+
+      // Also check button data attributes that might indicate profile
+      if (!profileKey) {
+        const btn = img.closest('button[data-test-id*="avatar"], button[data-test-id*="profile"], a[data-test-id*="profile"]');
+        if (btn) {
+          const profileLink = btn.querySelector('a[href*="/in/"]');
+          if (profileLink) {
+            profileKey = getProfileKeyFromUrl(profileLink.href);
+          }
+        }
+      }
+
+      if (!profileKey) return;
+
       img.dataset.mjliProcessed = "true";
+      console.log('[Memory Jogger] Processing image for:', profileKey);
 
       addIndicatorBadge(img, profileKey);
       addProfileImageHoverListener(img, profileKey);
@@ -298,7 +372,7 @@
 
   function renderForCurrentProfile() {
     const profileKey = getProfileKey();
-    console.log('[Memory Jogger] Current page:', { profileKey, url: window.location.href });
+    console.log('[Memory Jogger] Check page:', { profileKey, hasPanel: !!document.getElementById(ROOT_ID) });
 
     if (!profileKey) {
       removeExistingPanel();
@@ -307,15 +381,21 @@
       return;
     }
 
-    if (profileKey === lastProfileKey && document.getElementById(ROOT_ID)) {
-      findAndEnhanceAllProfileImages();
-      return;
+    // If we're on a profile page
+    if (profileKey !== lastProfileKey) {
+      // Profile changed, recreate panel
+      lastProfileKey = profileKey;
+      const storageKey = `note:${profileKey}`;
+      console.log('[Memory Jogger] New profile detected:', profileKey);
+      setTimeout(() => createPanel(profileKey, storageKey), 100);
+    } else if (!document.getElementById(ROOT_ID)) {
+      // Same profile but panel was removed, recreate it
+      const storageKey = `note:${profileKey}`;
+      console.log('[Memory Jogger] Panel missing, recreating:', profileKey);
+      createPanel(profileKey, storageKey);
     }
 
-    lastProfileKey = profileKey;
-    const storageKey = `note:${profileKey}`;
-    console.log('[Memory Jogger] Creating panel for:', profileKey);
-    createPanel(profileKey, storageKey);
+    // Always update profile images (in case new ones loaded)
     findAndEnhanceAllProfileImages();
   }
 
