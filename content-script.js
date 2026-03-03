@@ -62,32 +62,40 @@
   }
 
   function findCtaButtonsAnchor() {
-    // Find the main content area on a LinkedIn profile page
-    // We want to inject into the main column (not full page width)
+    // Find where to insert the panel - right after the CTA buttons area
+    // LinkedIn structure: main > [top-card section] > [buttons section] > [content sections]
     
-    // Strategy: Find the first major section/article in main that's not the header
     const main = document.querySelector('main');
     if (!main) {
-      console.log('[Memory Jogger] No main element found');
+      console.log('[Memory Jogger] No main element');
       return document.body;
     }
 
-    // Look for the section right after the top card (hero/profile header)
-    const sections = main.querySelectorAll('section');
-    if (sections.length > 1) {
-      // Second section is usually the first content section after the header
-      console.log('[Memory Jogger] Using second section in main');
-      return sections[1];
+    // Look for the section that contains the Message/Connect/Follow buttons
+    const allSections = main.querySelectorAll('section');
+    let insertTarget = null;
+
+    for (let section of allSections) {
+      const buttons = section.querySelectorAll('button');
+      for (let btn of buttons) {
+        if (btn.textContent.includes('Message') || btn.textContent.includes('Connect') || btn.textContent.includes('Follow')) {
+          // This is likely the CTA buttons section
+          // We want to insert after this section
+          insertTarget = section.nextElementSibling || section.parentElement;
+          console.log('[Memory Jogger] Found CTA section');
+          break;
+        }
+      }
+      if (insertTarget) break;
     }
 
-    if (sections.length > 0) {
-      console.log('[Memory Jogger] Using first section in main');
-      return sections[0];
+    // If we couldn't find by buttons, just use the main element
+    if (!insertTarget) {
+      insertTarget = main;
+      console.log('[Memory Jogger] Using main as fallback');
     }
 
-    // Fallback: insert at start of main
-    console.log('[Memory Jogger] Using main element directly');
-    return main;
+    return insertTarget;
   }
 
   function createPanel(profileKey, storageKey) {
@@ -108,16 +116,28 @@
       </div>
     `;
 
-    const anchor = findCtaButtonsAnchor();
+    const target = findCtaButtonsAnchor();
     
-    // Insert the panel as the first child of the anchor
-    if (anchor.firstChild) {
-      anchor.insertBefore(panel, anchor.firstChild);
+    // If target is main, find a good insertion point inside it
+    if (target.tagName === 'MAIN') {
+      // Look for a section to insert into
+      const sections = target.querySelectorAll('section');
+      if (sections.length > 1) {
+        // Insert before the second section (first content section)
+        sections[1].parentNode.insertBefore(panel, sections[1]);
+      } else {
+        // Just append to main
+        target.appendChild(panel);
+      }
+    } else if (target.tagName === 'SECTION') {
+      // Insert after this section
+      target.parentNode.insertBefore(panel, target.nextSibling);
     } else {
-      anchor.appendChild(panel);
+      // Default: append
+      target.appendChild(panel);
     }
 
-    console.log('[Memory Jogger] Panel injected into:', { tag: anchor.tagName, id: anchor.id, class: anchor.className });
+    console.log('[Memory Jogger] Panel injected');
 
     const closeBtn = panel.querySelector("#mjli-close");
     closeBtn.addEventListener("click", () => panel.remove());
@@ -322,7 +342,24 @@
   }
 
   function findAndEnhanceAllProfileImages() {
-    // Find all potential profile images - look for typical avatar/profile pic patterns
+    // Special handling for profile page main avatar
+    const profileKey = getProfileKey();
+    if (profileKey) {
+      // Look for the main profile avatar at the top of the page
+      const topCard = document.querySelector('[data-test-id="top-card"]');
+      if (topCard) {
+        const profileAvatar = topCard.querySelector('img[alt*="avatar"], img[alt*="profile"], button img:first-child');
+        if (profileAvatar && !profileAvatar.dataset.mjliProcessed) {
+          profileAvatar.dataset.mjliProcessed = "true";
+          const storageKey = `note:${profileKey}`;
+          addProfileImageHoverListener(profileAvatar, profileKey);
+          addIndicatorBadge(profileAvatar, profileKey);
+          console.log('[Memory Jogger] Processed main profile avatar');
+        }
+      }
+    }
+
+    // Find all potential profile images across the page
     const allImages = document.querySelectorAll('img');
     console.log('[Memory Jogger] Scanning', allImages.length, 'images for profiles');
 
@@ -331,7 +368,7 @@
       // Skip if already processed
       if (img.dataset.mjliProcessed) return;
 
-      // Skip obvious non-profile images (company logos, icons smaller than avatars, etc)
+      // Skip obvious non-profile images
       if (img.alt && (img.alt.toLowerCase().includes('logo') || img.alt.toLowerCase().includes('icon'))) {
         return;
       }
@@ -384,7 +421,7 @@
     });
 
     if (processed > 0) {
-      console.log('[Memory Jogger] Processed', processed, 'images');
+      console.log('[Memory Jogger] Processed', processed, 'additional images');
     }
   }
 
