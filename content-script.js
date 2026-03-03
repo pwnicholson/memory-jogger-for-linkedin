@@ -62,35 +62,21 @@
   }
 
   function findCtaButtonsAnchor() {
-    // Find the button container in the top card and insert right after it
+    // Find the main element and insert at the top of its content (after the hero/top-card)
     const main = document.querySelector('main');
     if (!main) {
       console.log('[Memory Jogger] No main element');
       return document.body;
     }
 
-    // Find the container with the action buttons
-    let buttonContainer = document.querySelector('[data-test-id="top-card-button-container"]');
-    
-    if (buttonContainer) {
-      // Insert after this button container
-      console.log('[Memory Jogger] Found button container');
-      return buttonContainer;
+    // Get the first section (hero/top-card), return it so we insert after it
+    const firstSection = main.querySelector('section:first-of-type');
+    if (firstSection) {
+      console.log('[Memory Jogger] Found first section (top-card)');
+      return firstSection;
     }
 
-    // Fallback: find any section with Message/Connect/Follow buttons
-    const allButtons = main.querySelectorAll('button');
-    for (let btn of allButtons) {
-      if (btn.textContent.includes('Message') || btn.textContent.includes('Connect') || btn.textContent.includes('Follow')) {
-        buttonContainer = btn.closest('section, div[class*="button"], div[class*="action"]');
-        if (buttonContainer) {
-          console.log('[Memory Jogger] Found button section');
-          return buttonContainer;
-        }
-      }
-    }
-
-    console.log('[Memory Jogger] No button container found, using main');
+    console.log('[Memory Jogger] No section found, using main');
     return main;
   }
 
@@ -114,20 +100,20 @@
 
     const target = findCtaButtonsAnchor();
     
-    // Insert right after the button container
+    // Insert right after the target (top-card section)
     if (target && target !== document.body) {
       target.parentNode.insertBefore(panel, target.nextSibling);
+    } else if (target === document.body) {
+      document.body.appendChild(panel);
     } else {
-      // Fallback to beginning of main
+      // Shouldn't happen, but fallback
       const main = document.querySelector('main');
-      if (main && main.firstChild) {
-        main.insertBefore(panel, main.firstChild);
-      } else {
-        document.body.appendChild(panel);
+      if (main) {
+        main.appendChild(panel);
       }
     }
 
-    console.log('[Memory Jogger] Panel injected');
+    console.log('[Memory Jogger] Panel injected after:', target?.tagName || 'unknown');
 
     const closeBtn = panel.querySelector("#mjli-close");
     closeBtn.addEventListener("click", () => panel.remove());
@@ -267,8 +253,14 @@
       
       if (!noteText.trim()) return; // Only show tooltip if there's a note
 
+      // Suppress default browser tooltip by clearing title attribute temporarily
+      const originalTitle = img.getAttribute('title');
+      const originalAlt = img.getAttribute('alt');
+      img.removeAttribute('title');
+      img.setAttribute('alt', ''); // Clear alt to prevent browser tooltip
+
       // Extract profile name from alt text or nearby elements
-      let name = img.alt || "Profile";
+      let name = originalAlt || "Profile";
       if (!name || name.toLowerCase() === "profile") {
         // Try to find name from nearby text
         const parent = img.closest("a, div[data-test-id], li");
@@ -290,6 +282,9 @@
         () => {
           removeExistingTooltip();
           img.removeEventListener("mousemove", moveHandler);
+          // Restore original attributes
+          if (originalTitle) img.setAttribute('title', originalTitle);
+          if (originalAlt) img.setAttribute('alt', originalAlt);
         },
         { once: true }
       );
