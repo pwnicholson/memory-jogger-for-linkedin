@@ -336,6 +336,16 @@
     reader.readAsText(file);
   });
 
+  // --- Diagnostics Button ---
+  const diagnosticsBtn = document.getElementById('mjli-diagnostics-btn');
+  if (diagnosticsBtn) {
+    diagnosticsBtn.addEventListener('click', () => {
+      const extensionId = chrome.runtime.id;
+      const diagnosticsUrl = `chrome-extension://${extensionId}/diagnostics.html`;
+      window.open(diagnosticsUrl, 'diagnostics', 'width=1000,height=800');
+    });
+  }
+
   // --- Initial Load ---
   loadAndDisplayNotes();
 })();

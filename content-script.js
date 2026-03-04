@@ -62,25 +62,33 @@
       try {
         // Check if chrome.storage is still accessible
         if (!chrome || !chrome.storage || !chrome.storage.sync || !chrome.runtime) {
+          console.log('[Memory Jogger] Context invalidated during storageGet:', key);
           resolve("");
           return;
         }
         
+        const startTime = performance.now();
         chrome.storage.sync.get([key], (result) => {
           try {
+            const endTime = performance.now();
             if (chrome.runtime.lastError) {
               // Silent fail - context may be invalidated
+              console.log(`[Memory Jogger] storageGet error (${(endTime - startTime).toFixed(2)}ms):`, key, chrome.runtime.lastError.message);
               resolve("");
             } else {
-              resolve(result[key] || "");
+              const value = result[key] || "";
+              console.log(`[Memory Jogger] storageGet success (${(endTime - startTime).toFixed(2)}ms):`, key, `"${value.substring(0, 50)}..."`);
+              resolve(value);
             }
           } catch (e) {
             // Context invalidated in callback - silent fail
+            console.log('[Memory Jogger] storageGet callback error:', key, e.message);
             resolve("");
           }
         });
       } catch (e) {
         // Context invalidated - silent fail
+        console.log('[Memory Jogger] storageGet outer error:', key, e.message);
         resolve("");
       }
     });
@@ -91,25 +99,30 @@
       try {
         // Check if chrome.storage is still accessible
         if (!chrome || !chrome.storage || !chrome.storage.sync || !chrome.runtime) {
+          console.log('[Memory Jogger] Context invalidated during storageSet:', key);
           resolve();
           return;
         }
         
+        const startTime = performance.now();
         chrome.storage.sync.set({ [key]: value }, () => {
           try {
+            const endTime = performance.now();
             if (chrome.runtime.lastError) {
               // Silent fail - context may be invalidated
-              console.log('[Memory Jogger] Note likely saved (sync may be pending)');
+              console.log(`[Memory Jogger] storageSet error (${(endTime - startTime).toFixed(2)}ms):`, key, chrome.runtime.lastError.message);
             } else {
-              console.log('[Memory Jogger] Saved:', key);
+              console.log(`[Memory Jogger] storageSet success (${(endTime - startTime).toFixed(2)}ms):`, key, `"${value.substring(0, 50)}..."`);
             }
           } catch (e) {
             // Context invalidated in callback - silent fail
+            console.log('[Memory Jogger] storageSet callback error:', key, e.message);
           }
           resolve();
         });
       } catch (e) {
         // Context invalidated - silent fail
+        console.log('[Memory Jogger] storageSet outer error:', key, e.message);
         resolve();
       }
     });
