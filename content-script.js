@@ -1,15 +1,27 @@
 (() => {
-  console.log('[Memory Jogger] Content script loaded');
+  console.log('[Memory Jogger] Content script loaded on:', window.location.pathname);
+  
+  // Check sync status immediately
+  chrome.runtime.sendMessage({ action: 'checkSyncStatus' }, (response) => {
+    if (response) {
+      console.log('[Memory Jogger] Sync accessible:', response.accessible, '| Notes:', response.noteCount, '| Error:', response.error);
+    }
+  });
   
   // On page load, log storage status
   chrome.storage.sync.get(null, (result) => {
-    const noteCount = Object.keys(result).filter(k => k.startsWith('note:')).length;
-    const byteUsage = new Blob(Object.values(result)).size;
-    console.log('[Memory Jogger] Storage status:', {
-      notes: noteCount,
-      totalItems: Object.keys(result).length,
-      bytesUsed: byteUsage
-    });
+    if (chrome.runtime.lastError) {
+      console.error('[Memory Jogger] Storage error at page load:', chrome.runtime.lastError);
+    } else {
+      const noteCount = Object.keys(result).filter(k => k.startsWith('note:')).length;
+      const byteUsage = new Blob(Object.values(result)).size;
+      console.log('[Memory Jogger] Storage status on page load:', {
+        notes: noteCount,
+        totalItems: Object.keys(result).length,
+        bytesUsed: byteUsage,
+        url: window.location.pathname
+      });
+    }
   });
   
   const ROOT_ID = "mjli-root";
