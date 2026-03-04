@@ -4,115 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Memory Jogger - Sync Diagnostics</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 20px;
-      background: #f5f5f5;
-    }
-    h1 {
-      color: #0a66c2;
-      border-bottom: 2px solid #0a66c2;
-      padding-bottom: 10px;
-    }
-    h2 {
-      color: #333;
-      margin-top: 30px;
-      font-size: 18px;
-      border-left: 4px solid #0a66c2;
-      padding-left: 12px;
-    }
-    .section {
-      background: white;
-      padding: 20px;
-      margin: 20px 0;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    button {
-      background: #0a66c2;
-      color: white;
-      border: none;
-      padding: 10px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      margin-right: 8px;
-      margin-bottom: 8px;
-    }
-    button:hover {
-      background: #004182;
-    }
-    button.secondary {
-      background: #666;
-    }
-    button.secondary:hover {
-      background: #444;
-    }
-    button.danger {
-      background: #c24;
-    }
-    button.danger:hover {
-      background: #a22;
-    }
-    pre {
-      background: #f0f0f0;
-      padding: 12px;
-      border-radius: 4px;
-      overflow-x: auto;
-      border-left: 3px solid #0a66c2;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-    .status {
-      padding: 12px;
-      border-radius: 4px;
-      margin: 12px 0;
-      font-weight: 500;
-    }
-    .status.success {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-    .status.error {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
-    .status.info {
-      background: #d1ecf1;
-      color: #0c5460;
-      border: 1px solid #bee5eb;
-    }
-    .status.warning {
-      background: #fff3cd;
-      color: #856404;
-      border: 1px solid #ffeaa7;
-    }
-    input[type="text"], textarea {
-      width: 100%;
-      padding: 8px;
-      margin: 8px 0;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 12px;
-    }
-    textarea {
-      min-height: 100px;
-      resize: vertical;
-    }
-    .instructions {
-      background: #e7f3ff;
-      border-left: 4px solid #0a66c2;
-      padding: 12px;
-      margin: 12px 0;
-      border-radius: 4px;
-    }
-  </style>
+  <link rel="stylesheet" href="diagnostics.css">
 </head>
 <body>
   <h1>🔍 Memory Jogger - Sync Diagnostics</h1>
@@ -120,15 +12,15 @@
 
   <div class="section">
     <h2>Machine Information</h2>
-    <button onclick="getMachineInfo()">Check Machine Info</button>
+    <button id="machine-info-btn">Check Machine Info</button>
     <pre id="machine-info">Click button to load...</pre>
   </div>
 
   <div class="section">
     <h2>Storage Status</h2>
-    <button onclick="checkStorageStatus()">Check Storage Status</button>
-    <button onclick="getAllStorage()">View All Storage Data</button>
-    <button class="secondary" onclick="clearAllStorage()" title="WARNING: This will delete all notes!">Clear All Storage (DANGER)</button>
+    <button id="storage-status-btn">Check Storage Status</button>
+    <button id="all-storage-btn">View All Storage Data</button>
+    <button id="clear-storage-btn" class="secondary" title="WARNING: This will delete all notes!">Clear All Storage (DANGER)</button>
     <pre id="storage-status">Click a button above to load...</pre>
   </div>
 
@@ -149,28 +41,28 @@
     <input type="text" id="test-key" placeholder="/in/test-sync" value="/in/test-sync">
     
     <label>Test note text:</label>
-    <textarea id="test-note">This is a test note - TEST_$(date)</textarea>
+    <textarea id="test-note">This is a test note - TEST at current time</textarea>
     
     <br>
-    <button onclick="writeTestData()">Write Test Data</button>
-    <button onclick="readTestData()">Read Test Data</button>
-    <button onclick="checkSyncStatus2()">Check If Sync is Accessible</button>
-    <button class="danger" onclick="deleteTestData()">Delete Test Data</button>
+    <button id="write-test-btn">Write Test Data</button>
+    <button id="read-test-btn">Read Test Data</button>
+    <button id="sync-status-btn">Check If Sync is Accessible</button>
+    <button id="delete-test-btn" class="danger">Delete Test Data</button>
     
     <pre id="sync-test">Click a button above to test...</pre>
   </div>
 
   <div class="section">
     <h2>Storage API Test</h2>
-    <button onclick="testStorageAPI()">Test Storage API Access</button>
-    <button onclick="testSyncVsLocal()">Compare Sync vs Local Storage</button>
+    <button id="api-test-btn">Test Storage API Access</button>
+    <button id="sync-compare-btn">Compare Sync vs Local Storage</button>
     <pre id="api-test">Click a button to test...</pre>
   </div>
 
   <div class="section">
     <h2>Sync Log</h2>
-    <button onclick="getLogs()">Fetch Recent Logs from Service Worker</button>
-    <button class="secondary" onclick="clearLogs()">Clear Logs</button>
+    <button id="logs-btn">Fetch Recent Logs from Service Worker</button>
+    <button id="clear-logs-btn" class="secondary">Clear Logs</button>
     <pre id="logs">Click button to load...</pre>
   </div>
 
@@ -196,269 +88,6 @@
     </div>
   </div>
 
-  <script>
-    async function getMachineInfo() {
-      const info = {
-        timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent,
-        platform: navigator.platform,
-        url: window.location.href
-      };
-      
-      // Try to get Chrome version from user agent
-      const chromeMatch = navigator.userAgent.match(/Chrome\/([0-9.]+)/);
-      if (chromeMatch) {
-        info.chromeVersion = chromeMatch[1];
-      }
-      
-      document.getElementById('machine-info').textContent = JSON.stringify(info, null, 2);
-    }
-
-    async function checkStorageStatus() {
-      try {
-        const result = await chrome.storage.sync.get(null);
-        const noteCount = Object.keys(result).filter(k => k.startsWith('note:')).length;
-        const totalItems = Object.keys(result).length;
-        const byteUsage = JSON.stringify(result).length;
-        
-        const status = {
-          timestamp: new Date().toISOString(),
-          noteCount,
-          totalItems,
-          bytesUsed: byteUsage,
-          quotaBytes: 102400,
-          percentUsed: Math.round((byteUsage / 102400) * 100),
-          storageAvailable: byteUsage < 102400
-        };
-        
-        document.getElementById('storage-status').textContent = JSON.stringify(status, null, 2);
-      } catch (e) {
-        document.getElementById('storage-status').textContent = `Error: ${e.message}`;
-      }
-    }
-
-    async function getAllStorage() {
-      try {
-        const result = await chrome.storage.sync.get(null);
-        const output = {
-          timestamp: new Date().toISOString(),
-          totalItems: Object.keys(result).length,
-          data: result
-        };
-        document.getElementById('storage-status').textContent = JSON.stringify(output, null, 2);
-      } catch (e) {
-        document.getElementById('storage-status').textContent = `Error: ${e.message}`;
-      }
-    }
-
-    async function clearAllStorage() {
-      if (!confirm('Are you SURE? This will DELETE ALL NOTES. This cannot be undone.')) {
-        return;
-      }
-      if (!confirm('Really? ALL notes will be GONE. Last chance to cancel.')) {
-        return;
-      }
-      
-      try {
-        const result = await chrome.storage.sync.get(null);
-        const keys = Object.keys(result);
-        await chrome.storage.remove(keys);
-        document.getElementById('storage-status').textContent = `Deleted ${keys.length} items`;
-      } catch (e) {
-        document.getElementById('storage-status').textContent = `Error: ${e.message}`;
-      }
-    }
-
-    async function writeTestData() {
-      try {
-        const key = `note:${document.getElementById('test-key').value}`;
-        const note = document.getElementById('test-note').value;
-        
-        await new Promise((resolve) => {
-          chrome.storage.sync.set({ [key]: note }, () => {
-            if (chrome.runtime.lastError) {
-              resolve(`Error: ${chrome.runtime.lastError.message}`);
-            } else {
-              resolve('Success: Data written to chrome.storage.sync. Sync should propagate in 30-60 seconds.');
-            }
-          });
-        });
-        
-        const result = await chrome.storage.sync.get([key]);
-        document.getElementById('sync-test').textContent = 
-          `✅ Data written successfully\n\nVerified in local storage:\n${JSON.stringify(result, null, 2)}\n\nNow check other machines to see if it appears!`;
-      } catch (e) {
-        document.getElementById('sync-test').textContent = `❌ Error: ${e.message}`;
-      }
-    }
-
-    async function readTestData() {
-      try {
-        const key = `note:${document.getElementById('test-key').value}`;
-        const result = await chrome.storage.sync.get([key]);
-        
-        if (result[key]) {
-          document.getElementById('sync-test').textContent = `✅ Found!\n\n${JSON.stringify(result, null, 2)}`;
-        } else {
-          document.getElementById('sync-test').textContent = `❌ Not found in storage. Key: ${key}`;
-        }
-      } catch (e) {
-        document.getElementById('sync-test').textContent = `❌ Error: ${e.message}`;
-      }
-    }
-
-    async function checkSyncStatus2() {
-      try {
-        // Send message to service worker to check sync
-        const response = await new Promise((resolve, reject) => {
-          chrome.runtime.sendMessage({ action: 'checkSyncStatus' }, (response) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else {
-              resolve(response);
-            }
-          });
-        });
-        
-        document.getElementById('sync-test').textContent = 
-          `✅ Service worker responded:\n\n${JSON.stringify(response, null, 2)}`;
-      } catch (e) {
-        document.getElementById('sync-test').textContent = `❌ Error: ${e.message}`;
-      }
-    }
-
-    async function deleteTestData() {
-      try {
-        const key = `note:${document.getElementById('test-key').value}`;
-        await chrome.storage.remove([key]);
-        document.getElementById('sync-test').textContent = `✅ Test data deleted`;
-      } catch (e) {
-        document.getElementById('sync-test').textContent = `❌ Error: ${e.message}`;
-      }
-    }
-
-    async function testStorageAPI() {
-      try {
-        const testData = {
-          'test:sync': 'Testing chrome.storage.sync',
-          'test:local': 'Testing chrome.storage.local'
-        };
-        
-        // Test sync
-        await new Promise((resolve) => {
-          chrome.storage.sync.set(testData, () => resolve());
-        });
-        
-        const syncResult = await chrome.storage.sync.get(['test:sync']);
-        
-        // Test local
-        await new Promise((resolve) => {
-          chrome.storage.local.set(testData, () => resolve());
-        });
-        
-        const localResult = await chrome.storage.local.get(['test:local']);
-        
-        // Clean up
-        await chrome.storage.remove(['test:sync', 'test:local']);
-        
-        const output = {
-          timestamp: new Date().toISOString(),
-          syncAccessible: !!syncResult['test:sync'],
-          syncValue: syncResult['test:sync'],
-          localAccessible: !!localResult['test:local'],
-          localValue: localResult['test:local'],
-          bothWorking: syncResult['test:sync'] && localResult['test:local']
-        };
-        
-        document.getElementById('api-test').textContent = JSON.stringify(output, null, 2);
-      } catch (e) {
-        document.getElementById('api-test').textContent = `❌ Error: ${e.message}`;
-      }
-    }
-
-    async function testSyncVsLocal() {
-      try {
-        const testKey = `comparison:${Date.now()}`;
-        const testValue = `Test at ${new Date().toISOString()}`;
-        
-        // Write to both
-        const syncWrite = await new Promise((resolve) => {
-          chrome.storage.sync.set({ [testKey]: testValue }, () => {
-            resolve(chrome.runtime.lastError ? false : true);
-          });
-        });
-        
-        const localWrite = await new Promise((resolve) => {
-          chrome.storage.local.set({ [testKey]: testValue }, () => {
-            resolve(chrome.runtime.lastError ? false : true);
-          });
-        });
-        
-        // Read back
-        const syncRead = await chrome.storage.sync.get([testKey]);
-        const localRead = await chrome.storage.local.get([testKey]);
-        
-        // Cleanup
-        await chrome.storage.remove([testKey]);
-        
-        const output = `
-Sync Storage:
-  Write success: ${syncWrite}
-  Read success: ${!!syncRead[testKey]}
-  Value: "${syncRead[testKey]}"
-
-Local Storage:
-  Write success: ${localWrite}
-  Read success: ${!!localRead[testKey]}
-  Value: "${localRead[testKey]}"
-
-Conclusion:
-  Storage API working: ${syncWrite && localWrite ? '✅' : '❌'}
-  Problem is likely with Google Sync service, not Chrome APIs
-        `;
-        
-        document.getElementById('api-test').textContent = output;
-      } catch (e) {
-        document.getElementById('api-test').textContent = `❌ Error: ${e.message}`;
-      }
-    }
-
-    async function getLogs() {
-      try {
-        const response = await new Promise((resolve, reject) => {
-          chrome.runtime.sendMessage({ action: 'getLogs' }, (response) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else {
-              resolve(response);
-            }
-          });
-        });
-        
-        document.getElementById('logs').textContent = response.logs || 'No logs available';
-      } catch (e) {
-        document.getElementById('logs').textContent = `❌ Error: ${e.message}`;
-      }
-    }
-
-    async function clearLogs() {
-      try {
-        await new Promise((resolve) => {
-          chrome.runtime.sendMessage({ action: 'clearLogs' }, (response) => {
-            resolve();
-          });
-        });
-        document.getElementById('logs').textContent = '✅ Logs cleared';
-      } catch (e) {
-        document.getElementById('logs').textContent = `❌ Error: ${e.message}`;
-      }
-    }
-
-    // Load on page open
-    window.addEventListener('load', () => {
-      getMachineInfo();
-      checkStorageStatus();
-    });
-  </script>
+  <script src="diagnostics.js"></script>
 </body>
 </html>
