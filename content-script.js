@@ -225,10 +225,9 @@
     const tooltip = document.createElement("div");
     tooltip.id = TOOLTIP_ID;
     tooltip.className = "mjli-tooltip";
-    // Truncate both name and note to 60 chars total
+    // Just show the note text, truncated to 60 chars
     const truncatedNote = truncateText(noteText, 60);
-    const displayText = `${name} - ${truncatedNote}`;
-    tooltip.textContent = displayText;
+    tooltip.textContent = truncatedNote;
     document.body.appendChild(tooltip);
     return tooltip;
   }
