@@ -65,7 +65,9 @@ async function clearAllStorage() {
   try {
     const result = await chrome.storage.sync.get(null);
     const keys = Object.keys(result);
-    await chrome.storage.remove(keys);
+    await new Promise((resolve) => {
+      chrome.storage.sync.remove(keys, () => resolve());
+    });
     document.getElementById('storage-status').textContent = `Deleted ${keys.length} items`;
   } catch (e) {
     document.getElementById('storage-status').textContent = `Error: ${e.message}`;
@@ -133,7 +135,9 @@ async function checkSyncStatus2() {
 async function deleteTestData() {
   try {
     const key = `note:${document.getElementById('test-key').value}`;
-    await chrome.storage.remove([key]);
+    await new Promise((resolve) => {
+      chrome.storage.sync.remove([key], () => resolve());
+    });
     document.getElementById('sync-test').textContent = `✅ Test data deleted`;
   } catch (e) {
     document.getElementById('sync-test').textContent = `❌ Error: ${e.message}`;
@@ -161,8 +165,13 @@ async function testStorageAPI() {
     
     const localResult = await chrome.storage.local.get(['test:local']);
     
-    // Clean up
-    await chrome.storage.remove(['test:sync', 'test:local']);
+    // Clean up - use proper API calls
+    await new Promise((resolve) => {
+      chrome.storage.sync.remove(['test:sync'], () => resolve());
+    });
+    await new Promise((resolve) => {
+      chrome.storage.local.remove(['test:local'], () => resolve());
+    });
     
     const output = {
       timestamp: new Date().toISOString(),
@@ -201,8 +210,13 @@ async function testSyncVsLocal() {
     const syncRead = await chrome.storage.sync.get([testKey]);
     const localRead = await chrome.storage.local.get([testKey]);
     
-    // Cleanup
-    await chrome.storage.remove([testKey]);
+    // Cleanup - use proper API calls
+    await new Promise((resolve) => {
+      chrome.storage.sync.remove([testKey], () => resolve());
+    });
+    await new Promise((resolve) => {
+      chrome.storage.local.remove([testKey], () => resolve());
+    });
     
     const output = `
 Sync Storage:
