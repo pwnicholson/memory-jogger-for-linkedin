@@ -1,28 +1,42 @@
 (() => {
   console.log('[Memory Jogger] Content script loaded on:', window.location.pathname);
   
-  // Check sync status immediately
-  chrome.runtime.sendMessage({ action: 'checkSyncStatus' }, (response) => {
-    if (response) {
-      console.log('[Memory Jogger] Sync accessible:', response.accessible, '| Notes:', response.noteCount, '| Error:', response.error);
-    }
-  });
+  // Check sync status immediately, with error handling
+  try {
+    chrome.runtime.sendMessage({ action: 'checkSyncStatus' }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn('[Memory Jogger] Communication error:', chrome.runtime.lastError);
+      } else if (response) {
+        console.log('[Memory Jogger] Sync accessible:', response.accessible, '| Notes:', response.noteCount, '| Error:', response.error);
+      }
+    });
+  } catch (e) {
+    console.warn('[Memory Jogger] Could not check sync status:', e.message);
+  }
   
-  // On page load, log storage status
-  chrome.storage.sync.get(null, (result) => {
-    if (chrome.runtime.lastError) {
-      console.error('[Memory Jogger] Storage error at page load:', chrome.runtime.lastError);
+  // On page load, log storage status with error handling
+  try {
+    chrome.storage.sync.get(null, (result) => {
+      if (chrome.runtime.lastError) {
+        console.error('[Memory Jogger] Storage error at page load:', chrome.runtime.lastError);
+      } else {
+        const noteCount = Object.keys(result).filter(k => k.startsWith('note:')).length;
+        const byteUsage = new Blob(Object.values(result)).size;
+        console.log('[Memory Jogger] Storage status on page load:', {
+          notes: noteCount,
+          totalItems: Object.keys(result).length,
+          bytesUsed: byteUsage,
+          url: window.location.pathname
+        });
+      }
+    });
+  } catch (e) {
+    if (e.message && e.message.includes('context invalidated')) {
+      console.warn('[Memory Jogger] Extension context not yet ready');
     } else {
-      const noteCount = Object.keys(result).filter(k => k.startsWith('note:')).length;
-      const byteUsage = new Blob(Object.values(result)).size;
-      console.log('[Memory Jogger] Storage status on page load:', {
-        notes: noteCount,
-        totalItems: Object.keys(result).length,
-        bytesUsed: byteUsage,
-        url: window.location.pathname
-      });
+      console.warn('[Memory Jogger] Storage check failed:', e.message);
     }
-  });
+  }
   
   const ROOT_ID = "mjli-root";
   const TOOLTIP_ID = "mjli-tooltip";
@@ -42,6 +56,13 @@
   function storageGet(key) {
     return new Promise((resolve) => {
       try {
+        // Check if chrome.storage is still accessible
+        if (!chrome || !chrome.storage || !chrome.storage.sync) {
+          console.warn('[Memory Jogger] Storage context lost, returning empty');
+          resolve("");
+          return;
+        }
+        
         chrome.storage.sync.get([key], (result) => {
           if (chrome.runtime.lastError) {
             console.warn('[Memory Jogger] Storage error on get:', chrome.runtime.lastError);
@@ -51,7 +72,12 @@
           }
         });
       } catch (e) {
-        console.error('[Memory Jogger] Storage exception:', e);
+        // Can happen if extension context is invalidated
+        if (e.message && e.message.includes('context invalidated')) {
+          console.warn('[Memory Jogger] Extension context invalidated - storage temporarily unavailable');
+        } else {
+          console.error('[Memory Jogger] Storage exception:', e);
+        }
         resolve("");
       }
     });
@@ -60,6 +86,13 @@
   function storageSet(key, value) {
     return new Promise((resolve) => {
       try {
+        // Check if chrome.storage is still accessible
+        if (!chrome || !chrome.storage || !chrome.storage.sync) {
+          console.warn('[Memory Jogger] Storage context lost, cannot save');
+          resolve();
+          return;
+        }
+        
         chrome.storage.sync.set({ [key]: value }, () => {
           if (chrome.runtime.lastError) {
             console.warn('[Memory Jogger] Storage error on set:', chrome.runtime.lastError);
@@ -69,7 +102,12 @@
           resolve();
         });
       } catch (e) {
-        console.error('[Memory Jogger] Storage exception:', e);
+        // Can happen if extension context is invalidated
+        if (e.message && e.message.includes('context invalidated')) {
+          console.warn('[Memory Jogger] Extension context invalidated - changes may not save');
+        } else {
+          console.error('[Memory Jogger] Storage exception:', e);
+        }
         resolve();
       }
     });
