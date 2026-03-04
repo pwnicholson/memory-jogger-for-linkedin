@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Jogger - Notes Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body class="mjli-options-page">
+  <div class="mjli-options-container">
+    <header class="mjli-options-header">
+      <h1>Memory Jogger - Notes Dashboard</h1>
+      <p>View, edit, and manage all your LinkedIn notes</p>
+    </header>
+
+    <div class="mjli-options-toolbar">
+      <div class="mjli-storage-info">
+        <span id="mjli-storage-usage">Loading...</span>
+      </div>
+      <div class="mjli-toolbar-actions">
+        <button id="mjli-export-btn" class="mjli-btn-primary">Export Notes</button>
+        <button id="mjli-import-btn" class="mjli-btn-secondary">Import Notes</button>
+        <input type="file" id="mjli-import-file" accept=".json" style="display:none;">
+      </div>
+    </div>
+
+    <div class="mjli-options-content">
+      <div id="mjli-notes-list" class="mjli-notes-list">
+        <div class="mjli-loading">Loading notes...</div>
+      </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="mjli-edit-modal" class="mjli-modal" style="display: none;">
+      <div class="mjli-modal-content">
+        <div class="mjli-modal-header">
+          <h2>Edit Note</h2>
+          <button class="mjli-modal-close" id="mjli-modal-close">&times;</button>
+        </div>
+        <div class="mjli-modal-body">
+          <div class="mjli-profile-info">
+            <span id="mjli-edit-profile-name" class="mjli-profile-name"></span>
+          </div>
+          <textarea
+            id="mjli-edit-textarea"
+            class="mjli-textarea"
+            placeholder="e.g., Met at TechCon 2024... worked together at Acme Corp..."
+            maxlength="500"
+          ></textarea>
+          <div class="mjli-edit-footer">
+            <span id="mjli-edit-counter" class="mjli-counter">0 / 500</span>
+          </div>
+        </div>
+        <div class="mjli-modal-footer">
+          <button id="mjli-modal-cancel" class="mjli-btn-secondary">Cancel</button>
+          <button id="mjli-modal-save" class="mjli-btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

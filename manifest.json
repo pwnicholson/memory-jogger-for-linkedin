@@ -5,6 +5,7 @@
   "description": "Add a private 'How I know them' note to LinkedIn profiles.",
   "permissions": ["storage"],
   "host_permissions": ["https://www.linkedin.com/*"],
+  "options_page": "options.html",
   "background": {
     "service_worker": "service-worker.js"
   },

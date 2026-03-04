@@ -8,23 +8,40 @@
       body {
         margin: 0;
         min-width: 260px;
-        font-family: Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         padding: 12px;
       }
       h1 {
         font-size: 14px;
         margin: 0 0 8px;
+        color: #0a66c2;
+        font-weight: 700;
       }
       p {
         font-size: 12px;
-        margin: 0;
-        color: #444;
+        margin: 0 0 16px;
+        color: #666;
         line-height: 1.4;
+      }
+      button {
+        width: 100%;
+        padding: 10px 16px;
+        background: #0a66c2;
+        color: white;
+        border: none;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      button:hover {
+        background: #004182;
       }
     </style>
   </head>
   <body>
     <h1>Memory Jogger for LinkedIn</h1>
-    <p>Open a LinkedIn profile to add or update your private “How I know them” note.</p>
-  </body>
+    <p>Open a LinkedIn profile to add or update your private “How I know them” note.</p>    <button id="open-dashboard">View All Notes Dashboard</button>
+    <script src="popup.js"></script>  </body>
 </html>
