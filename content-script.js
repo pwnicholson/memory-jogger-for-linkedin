@@ -1,5 +1,17 @@
 (() => {
   console.log('[Memory Jogger] Content script loaded');
+  
+  // On page load, log storage status
+  chrome.storage.sync.get(null, (result) => {
+    const noteCount = Object.keys(result).filter(k => k.startsWith('note:')).length;
+    const byteUsage = new Blob(Object.values(result)).size;
+    console.log('[Memory Jogger] Storage status:', {
+      notes: noteCount,
+      totalItems: Object.keys(result).length,
+      bytesUsed: byteUsage
+    });
+  });
+  
   const ROOT_ID = "mjli-root";
   const TOOLTIP_ID = "mjli-tooltip";
   const INDICATOR_CLASS = "mjli-indicator";
