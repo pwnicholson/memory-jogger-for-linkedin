@@ -59,6 +59,35 @@
     return getProfileKeyFromUrl(window.location.pathname);
   }
 
+  function waitForElement(selector, timeout = 3000) {
+    return new Promise((resolve) => {
+      const element = document.querySelector(selector);
+      if (element) {
+        resolve(element);
+        return;
+      }
+
+      const observer = new MutationObserver(() => {
+        const el = document.querySelector(selector);
+        if (el) {
+          observer.disconnect();
+          resolve(el);
+        }
+      });
+
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+
+      // Timeout after specified ms
+      setTimeout(() => {
+        observer.disconnect();
+        resolve(null);
+      }, timeout);
+    });
+  }
+
   function storageGet(key) {
     return new Promise((resolve) => {
       try {
@@ -706,11 +735,15 @@
 
     // If we're on a profile page
     if (profileKey !== lastProfileKey) {
-      // Profile changed, recreate panel
+      // Profile changed, wait for main element then recreate panel
       lastProfileKey = profileKey;
       const storageKey = `note:${profileKey}`;
       console.log('[Memory Jogger] New profile detected:', profileKey);
-      setTimeout(() => createPanel(profileKey, storageKey), 100);
+      
+      // Wait for main element to be available before creating panel
+      waitForElement('main', 3000).then(() => {
+        createPanel(profileKey, storageKey);
+      });
     } else if (!document.getElementById(ROOT_ID)) {
       // Same profile but panel was removed, recreate it
       const storageKey = `note:${profileKey}`;
@@ -742,6 +775,7 @@
   // Also watch for dynamic DOM changes (LinkedIn loads content dynamically)
   const observer = new MutationObserver(() => {
     findAndEnhanceAllProfileImages();
+    renderForCurrentProfile(); // Also check if panel needs to be created/updated
   });
 
   observer.observe(document.body, {
@@ -752,5 +786,5 @@
 
   setupNavigationListener();
   renderForCurrentProfile();
-  setInterval(renderForCurrentProfile, 2000);
+  setInterval(renderForCurrentProfile, 1000); // Check more frequently for better responsiveness
 })();
