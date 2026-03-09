@@ -13,8 +13,10 @@
   const editTextarea = document.getElementById('mjli-edit-textarea');
   const editCounter = document.getElementById('mjli-edit-counter');
   const editProfileName = document.getElementById('mjli-edit-profile-name');
+  const searchInput = document.getElementById('mjli-search-input');
 
   let currentEditingKey = null;
+  let allNotesData = {}; // Cache for filtering
 
   // --- Storage Helpers ---
   function storageGet(key) {
@@ -101,7 +103,7 @@
           return;
         }
         
-        chrome.storage.remove([key], () => {
+        chrome.storage.sync.remove([key], () => {
           try {
             if (chrome.runtime.lastError) {
               console.log('[Memory Jogger] Note deleted (sync may be pending)');
@@ -150,11 +152,13 @@
   }
 
   // --- Load and Display Notes ---
-  async function loadAndDisplayNotes() {
+  async function loadAndDisplayNotes(filterText = '') {
     notesList.innerHTML = '<div class="mjli-loading">Loading notes...</div>';
     
     const allData = await storageGetAll();
     const noteEntries = Object.entries(allData).filter(([key]) => key.startsWith('note:'));
+    
+    allNotesData = {}; // Store for filtering
     
     await updateStorageInfo();
 
@@ -171,29 +175,106 @@
 
     notesList.innerHTML = '';
     
-    // Sort notes by profile name
-    noteEntries.sort((a, b) => {
-      const nameA = a[0].replace('note:/in/', '').toLocaleLowerCase();
-      const nameB = b[0].replace('note:/in/', '').toLocaleLowerCase();
-      return nameA.localeCompare(nameB);
-    });
+    // Build notes data with metadata
+    const filter = filterText.toLowerCase();
+    let matchedCount = 0;
 
     for (const [key, noteText] of noteEntries) {
       const profileKey = key.replace('note:', '');
+      const metaKey = key.replace('note:', 'meta:');
       const profileName = profileKey.replace('/in/', '');
-      const initials = getInitials(profileName.replace(/-/g, ' '));
       
+      // Build displayName with multiple fallback strategies
+      let displayName = '';
+      let initials = '';
+      
+      // Strategy 1: Try to load from metadata first
+      if (allData[metaKey]) {
+        try {
+          const metadata = JSON.parse(allData[metaKey]);
+          // Only use metadata name if it's a valid, non-empty string
+          if (metadata.name && metadata.name.trim() && metadata.name.length > 1) {
+            // Extra validation: reject names that look like UI artifacts
+            const name = metadata.name.trim();
+            // Skip if it starts with special characters like "(1)", "[", etc
+            if (!/^[\(\[\{]/.test(name) && !/^[\d\-]+$/.test(name)) {
+              displayName = name;
+            }
+          }
+        } catch (e) {
+          // Metadata parse error, continue to fallback
+        }
+      }
+      
+      // Strategy 2: If no valid metadata name, create from profile URL
+      if (!displayName) {
+        // Try to extract just the name parts (remove numeric user IDs if present)
+        // LinkedIn URLs like /in/matt-jalove-07057551 should become "Matt Jalove" not "Matt Jalove 07057551"
+        let nameFromUrl = profileName;
+        
+        // Remove trailing numeric ID (common pattern: name-number)
+        // Match last segment if it's all numbers, and remove it
+        nameFromUrl = nameFromUrl.replace(/-\d+$/, '');
+        
+        // Now convert remaining URL to a name
+        // /in/charles-settles -> "Charles Settles"
+        displayName = nameFromUrl
+          .split('-')
+          .map(part => {
+            // Capitalize first letter, lowercase rest
+            if (part.length === 0 || /^\d+$/.test(part)) return '';
+            return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+          })
+          .filter(part => part.length > 0)
+          .join(' ');
+        
+        // Fallback if everything filtered out
+        if (!displayName || displayName.length === 0) {
+          displayName = profileName.replace(/-/g, ' ').replace(/\d+/g, '').trim() || profileName;
+        }
+      }
+      
+      // Generate initials from displayName
+      initials = getInitials(displayName || profileName);
+
+      // Store for reference
+      allNotesData[key] = {
+        profileKey,
+        displayName,
+        profileImage: '',
+        profileName,
+        noteText,
+        initials
+      };
+
+      // Filter logic
+      if (filter) {
+        const matchesDisplay = displayName.toLowerCase().includes(filter);
+        const matchesProfileKey = profileKey.toLowerCase().includes(filter);
+        const matchesNoteText = noteText.toLowerCase().includes(filter);
+        
+        if (!matchesDisplay && !matchesProfileKey && !matchesNoteText) {
+          continue;
+        }
+      }
+
+      matchedCount++;
+
+      // Create note item
       const noteItem = document.createElement('div');
       noteItem.className = 'mjli-note-item';
+      
       noteItem.innerHTML = `
         <div class="mjli-note-item-header">
           <div class="mjli-note-item-profile">
             <div class="mjli-profile-avatar">${escapeHtml(initials)}</div>
             <div class="mjli-profile-details">
               <a href="https://www.linkedin.com${profileKey}" target="_blank" class="mjli-profile-name">
-                ${escapeHtml(profileName.replace(/-/g, ' '))}
+                ${escapeHtml(displayName)}
               </a>
-              <span class="mjli-profile-key">${escapeHtml(profileKey)}</span>
+              <a href="https://www.linkedin.com${profileKey}" target="_blank" class="mjli-profile-key">
+                ${escapeHtml(profileKey)}
+              </a>
             </div>
           </div>
           <div class="mjli-note-item-actions">
@@ -207,22 +288,47 @@
         </div>
       `;
 
+
       // Edit button listener
       noteItem.querySelector('.mjli-edit-note-btn').addEventListener('click', (e) => {
         const key = e.target.getAttribute('data-key');
-        openEditModal(key, profileName, noteText);
+        const data = allNotesData[key];
+        if (data) {
+          openEditModal(key, data.displayName, data.noteText);
+        }
       });
 
       // Delete button listener
       noteItem.querySelector('.mjli-delete-note-btn').addEventListener('click', async (e) => {
         const key = e.target.getAttribute('data-key');
-        if (confirm(`Delete note for ${profileName}?`)) {
+        const data = allNotesData[key];
+        const name = data ? data.displayName : 'this person';
+        if (confirm(`Delete note for ${name}?`)) {
           await storageRemove(key);
-          loadAndDisplayNotes();
+          // Also try to remove metadata
+          const metaKey = key.replace('note:', 'meta:');
+          await storageRemove(metaKey);
+          loadAndDisplayNotes(filterText);
         }
       });
 
       notesList.appendChild(noteItem);
+    }
+
+    // Show filter results message if filtering
+    if (filter && matchedCount === 0) {
+      notesList.innerHTML = `
+        <div class="mjli-empty-state">
+          <div class="mjli-empty-state-icon">🔍</div>
+          <h3>No matches found</h3>
+          <p>No notes match "<strong>${escapeHtml(filter)}</strong>"</p>
+        </div>
+      `;
+    } else if (filter && matchedCount < noteEntries.length) {
+      const summary = document.createElement('div');
+      summary.className = 'mjli-filter-summary';
+      summary.textContent = `Showing ${matchedCount} of ${noteEntries.length} notes`;
+      notesList.insertBefore(summary, notesList.firstChild);
     }
   }
 
@@ -242,7 +348,7 @@
   }
 
   function updateEditCounter() {
-    editCounter.textContent = `${editTextarea.value.length} / 500`;
+    editCounter.textContent = `${editTextarea.value.length} / 200`;
   }
 
   // Modal event listeners
@@ -265,6 +371,17 @@
       closeEditModal();
     }
   });
+
+  // --- Search/Filter ---
+  if (searchInput) {
+    let searchTimeout;
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        loadAndDisplayNotes(e.target.value);
+      }, 300); // Debounce for 300ms
+    });
+  }
 
   // --- Export Notes ---
   exportBtn.addEventListener('click', async () => {
@@ -313,7 +430,7 @@
         let skipped = 0;
 
         for (const [profileKey, noteText] of Object.entries(importedData)) {
-          // Validate profile key format
+          // Validate profile key format (supports special characters like %E2%9A%A1)
           if (!profileKey.startsWith('/in/') || typeof noteText !== 'string') {
             skipped++;
             continue;
@@ -321,6 +438,7 @@
 
           const key = `note:${profileKey}`;
           await storageSet(key, noteText);
+          // metadata is auto-saved by storageSet when note is set
           imported++;
         }
 

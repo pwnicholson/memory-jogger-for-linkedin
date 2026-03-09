@@ -15,6 +15,14 @@
     </header>
 
     <div class="mjli-options-toolbar">
+      <div class="mjli-search-container">
+        <input 
+          type="text" 
+          id="mjli-search-input" 
+          class="mjli-search-input"
+          placeholder="Search notes by name or content..."
+        >
+      </div>
       <div class="mjli-storage-info">
         <span id="mjli-storage-usage">Loading...</span>
       </div>
@@ -47,10 +55,13 @@
             id="mjli-edit-textarea"
             class="mjli-textarea"
             placeholder="e.g., Met at TechCon 2024... worked together at Acme Corp..."
-            maxlength="500"
+            maxlength="200"
           ></textarea>
           <div class="mjli-edit-footer">
-            <span id="mjli-edit-counter" class="mjli-counter">0 / 500</span>
+            <div class="mjli-counter-section">
+              <span id="mjli-edit-counter" class="mjli-counter">0 / 200</span>
+              <span class="mjli-preview-hint">💡 First 60 characters show in preview</span>
+            </div>
           </div>
         </div>
         <div class="mjli-modal-footer">

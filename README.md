@@ -16,6 +16,8 @@ A minimal Chrome Extension (Manifest V3) that adds a private **"How I know them"
 4. Select this folder: `memory-jogger-for-linkedin`.
 5. Open any LinkedIn profile (`https://www.linkedin.com/in/...`) to use it.
 
+(extension is also available on the Chrome Web Store https://chromewebstore.google.com/search/memory%20jogger%20for%20linkedin)
+
 ## Privacy model (current MVP)
 
 - No backend/server.

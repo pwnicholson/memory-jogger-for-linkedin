@@ -17,6 +17,14 @@ async function getMachineInfo() {
   document.getElementById('machine-info').textContent = JSON.stringify(info, null, 2);
 }
 
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
 async function checkStorageStatus() {
   try {
     const result = await chrome.storage.sync.get(null);
@@ -34,7 +42,18 @@ async function checkStorageStatus() {
       storageAvailable: byteUsage < 102400
     };
     
-    document.getElementById('storage-status').textContent = JSON.stringify(status, null, 2);
+    let output = JSON.stringify(status, null, 2);
+    
+    // Add human-readable summary before the JSON
+    const summary = `You've used ${status.percentUsed}% of your storage (${formatBytes(status.bytesUsed)} / ${formatBytes(status.quotaBytes)})\n\n`;
+    output = summary + output;
+    
+    // Add warning if capacity is at 85% or higher
+    if (status.percentUsed >= 85) {
+      output = `⚠️ WARNING: Your space for storing synced notes is at ${status.percentUsed}% capacity. Unfortunately, this is a Chrome limitation.\n\n${output}`;
+    }
+    
+    document.getElementById('storage-status').textContent = output;
   } catch (e) {
     document.getElementById('storage-status').textContent = `Error: ${e.message}`;
   }

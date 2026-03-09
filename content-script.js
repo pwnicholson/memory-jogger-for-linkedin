@@ -49,7 +49,9 @@
   let editMode = false;
 
   function getProfileKeyFromUrl(url) {
-    const match = url.match(/\/in\/([a-z0-9-]+)/i);
+    // Match /in/ followed by anything up to the next / or end of string
+    // This preserves URL-encoded characters like %E2%9A%A1
+    const match = url.match(/\/in\/([^\/\?#]+)/i);
     return match ? `/in/${match[1].toLowerCase()}` : null;
   }
 
@@ -113,6 +115,21 @@
               console.log(`[Memory Jogger] storageSet error (${(endTime - startTime).toFixed(2)}ms):`, key, chrome.runtime.lastError.message);
             } else {
               console.log(`[Memory Jogger] storageSet success (${(endTime - startTime).toFixed(2)}ms):`, key, `"${value.substring(0, 50)}..."`);
+              
+              // If this is a note, also save the metadata (name only, no image to conserve sync space) for the dashboard
+              if (key.startsWith('note:') && value.trim()) {
+                const displayName = getLinkedInDisplayName();
+                const metaKey = key.replace('note:', 'meta:');
+                const metaValue = JSON.stringify({
+                  name: displayName
+                });
+                
+                chrome.storage.sync.set({ [metaKey]: metaValue }, () => {
+                  if (!chrome.runtime.lastError) {
+                    console.log(`[Memory Jogger] Saved metadata for:`, key);
+                  }
+                });
+              }
             }
           } catch (e) {
             // Context invalidated in callback - silent fail
@@ -237,10 +254,13 @@
           id="mjli-textarea"
           class="mjli-textarea"
           placeholder="e.g., Met at TechCon 2024... worked together at Acme Corp..."
-          maxlength="500"
+          maxlength="200"
         >${escapeHtml(noteText)}</textarea>
         <div class="mjli-edit-footer">
-          <span id="mjli-counter" class="mjli-counter"></span>
+          <div class="mjli-counter-section">
+            <span id="mjli-counter" class="mjli-counter"></span>
+            <span class="mjli-preview-hint">💡 First 60 characters show in preview</span>
+          </div>
           <div class="mjli-edit-buttons">
             <button id="mjli-save" class="mjli-btn-primary">Save</button>
             <button id="mjli-cancel" class="mjli-btn-secondary">Cancel</button>
@@ -255,7 +275,7 @@
 
       // Update character counter
       const updateCounter = () => {
-        counter.textContent = `${textarea.value.length} / 500`;
+        counter.textContent = `${textarea.value.length} / 200`;
       };
       textarea.addEventListener("input", updateCounter);
       updateCounter();
@@ -273,6 +293,103 @@
         renderNoteContent(storageKey);
       });
     });
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function getLinkedInDisplayName() {
+    // Helper to validate if text is a reasonable name (not UI noise)
+    function isValidName(text) {
+      if (!text || text.length < 2 || text.length > 100) return false;
+      // Reject if starts with special chars like "(1)", "[", etc
+      if (/^[\(\[\{]/.test(text)) return false;
+      // Reject if looks like an ID or pure number
+      if (/^\d+$/.test(text)) return false;
+      // Reject if contains only numbers and separators
+      if (/^[\d\-\.\s]+$/.test(text)) return false;
+      // Reject if contains keywords indicating it's not a name
+      if (text.toLowerCase().includes('profile') || text.toLowerCase().includes('view')) return false;
+      return true;
+    }
+    
+    // Strategy 1: Check the page title (usually "FirstName LastName | LinkedIn")
+    const pageTitle = document.title;
+    const titleMatch = pageTitle.match(/^(.+?)\s*\|\s*LinkedIn/);
+    if (titleMatch && titleMatch[1]) {
+      const name = titleMatch[1].trim();
+      if (isValidName(name)) {
+        return name;
+      }
+    }
+    
+    // Strategy 2: Look for h1 in top card (main profile name) - most reliable
+    let h1 = document.querySelector('[data-test-id="top-card"] h1');
+    if (!h1) h1 = document.querySelector('h1');
+    if (h1) {
+      const name = h1.textContent.trim();
+      if (isValidName(name)) return name;
+    }
+    
+    // Strategy 3: Look for name directly in top card using specific selectors
+    const topCard = document.querySelector('[data-test-id="top-card"]');
+    if (topCard) {
+      // Look for the name in heading elements
+      const headings = topCard.querySelectorAll('h1, h2, h3');
+      for (const heading of headings) {
+        const name = heading.textContent.trim();
+        if (isValidName(name)) return name;
+      }
+      
+      // Look for name in data-test-ids that specifically mention name/headline
+      const nameElements = topCard.querySelectorAll('[data-test-id*="headline"], [data-test-id*="name"]');
+      for (const el of nameElements) {
+        const name = el.textContent.trim();
+        if (isValidName(name)) return name;
+      }
+      
+      // Last resort: look for spans that look like names (not badges/counters)
+      const spans = topCard.querySelectorAll('span');
+      for (const span of spans) {
+        const text = span.textContent.trim();
+        // Only accept if it matches a real name pattern (at least one letter after cap)
+        // Skip if parent looks like a counter/badge
+        const parent = span.parentElement;
+        if (parent && (parent.className.includes('badge') || parent.className.includes('counter'))) {
+          continue;
+        }
+        // Accept names like "John", "John Smith", "John Paul Smith"
+        if (text && /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(text) && isValidName(text)) {
+          return text;
+        }
+      }
+    }
+    
+    // Strategy 4: Look for name attribute in profile image alt text
+    const profileImg = document.querySelector('[data-test-id="top-card"] img[alt], [class*="profile"] img[alt]');
+    if (profileImg && profileImg.alt) {
+      // LinkedIn alt format: "View FirstName LastName's profile" or "FirstName LastName"
+      const altMatch = profileImg.alt.match(/^(?:View\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
+      if (altMatch && altMatch[1]) {
+        const name = altMatch[1].trim();
+        if (isValidName(name)) return name;
+      }
+    }
+    
+    // Fallback: Return empty string, dashboard will use URL-based name
+    return '';
+  }
+
+  function getLinkedInProfileImage() {
+    // Get the profile image URL if available
+    const imgElement = document.querySelector('[data-test-id="top-card"] img[alt*="profile"], [data-test-id*="profile"] img[alt*="profile"]');
+    if (imgElement && imgElement.src) {
+      return imgElement.src;
+    }
+    return '';
   }
 
   function escapeHtml(text) {
@@ -397,6 +514,13 @@
 
   function addIndicatorBadge(img, profileKey) {
     const storageKey = `note:${profileKey}`;
+    
+    // Check if image has a direct profile link parent (true for profile avatars)
+    // Skip if no direct link, as it's likely post media
+    const directLink = img.closest('a[href*="/in/"]');
+    if (!directLink) {
+      return; // No direct profile link, likely post media
+    }
 
     storageGet(storageKey).then((noteText) => {
       if (!noteText.trim()) {
@@ -436,7 +560,22 @@
       indicator.className = INDICATOR_CLASS;
       indicator.setAttribute("data-profile-key", profileKey);
       indicator.title = "Memory note saved for this profile";
-      indicator.textContent = "📝";
+      
+      // Try to use the extension icon, fallback to pencil emoji
+      const iconImg = document.createElement("img");
+      iconImg.src = chrome.runtime.getURL("icon-16.png");
+      iconImg.alt = "Memory note saved";
+      iconImg.style.width = "16px";
+      iconImg.style.height = "16px";
+      iconImg.style.display = "block";
+      
+      // Fallback to emoji if image fails to load
+      iconImg.onerror = () => {
+        indicator.textContent = "✏️";
+        indicator.style.fontSize = "14px";
+      };
+      
+      indicator.appendChild(iconImg);
       
       container.appendChild(indicator);
       img.dataset.mjliBadge = "true";
