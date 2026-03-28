@@ -8,3 +8,4 @@ Thumbs.db
 # Optional if npm tooling is added later
 node_modules/
 dist/
+memory-jogger-workspace.code-workspace
