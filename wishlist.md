@@ -1,0 +1,3 @@
+- Fix bug where the text entry field doesn't pop up on user pages until after reload
+- automatically pull in 'connected since' date when making a note.
+- display 'connected since' date in small text under pop-up
