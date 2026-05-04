@@ -13,6 +13,7 @@
   const editTextarea = document.getElementById('mjli-edit-textarea');
   const editCounter = document.getElementById('mjli-edit-counter');
   const editProfileName = document.getElementById('mjli-edit-profile-name');
+  const editConnectedOn = document.getElementById('mjli-edit-connected-on');
   const searchInput = document.getElementById('mjli-search-input');
   const devLoggingToggle = document.getElementById('mjli-dev-logging-toggle');
   const tabPeople = document.getElementById('mjli-tab-people');
@@ -241,6 +242,7 @@
       // Build displayName with multiple fallback strategies
       let displayName = '';
       let initials = '';
+      let connectedDate = '';
       
       // Strategy 1: Try to load from metadata first
       if (allData[metaKey]) {
@@ -254,6 +256,9 @@
             if (!/^[\(\[\{]/.test(name) && !/^[\d\-]+$/.test(name)) {
               displayName = name;
             }
+          }
+          if (typeof metadata.con === 'string' && metadata.con.trim()) {
+            connectedDate = metadata.con.trim();
           }
         } catch (e) {
           // Metadata parse error, continue to fallback
@@ -307,7 +312,8 @@
         profileImage: '',
         profileName,
         noteText,
-        initials
+        initials,
+        connectedDate
       };
 
       // Filter logic
@@ -348,7 +354,7 @@
         </div>
         <div class="mjli-note-item-content">${escapeHtml(noteText)}</div>
         <div class="mjli-note-metadata">
-          ${noteText.length} characters
+          ${noteText.length} characters${connectedDate ? ` · Connected: ${escapeHtml(connectedDate)}` : ''}
         </div>
       `;
 
@@ -401,6 +407,10 @@
     currentEditingKey = key;
     editProfileName.textContent = profileName.replace(/-/g, ' ');
     editTextarea.value = noteText;
+    const data = allNotesData[key];
+    if (editConnectedOn) {
+      editConnectedOn.value = data && data.connectedDate ? data.connectedDate : '';
+    }
     updateEditCounter();
     editModal.style.display = 'flex';
     editTextarea.focus();
@@ -424,7 +434,24 @@
     if (!currentEditingKey) return;
     
     const newText = editTextarea.value.trim();
+    const connectedOn = editConnectedOn ? editConnectedOn.value.trim() : '';
     await storageSet(currentEditingKey, newText);
+
+    const metaKey = currentEditingKey.replace('note:', 'meta:');
+    const existingMetaRaw = await storageGet(metaKey);
+    let meta = {};
+    if (existingMetaRaw) {
+      try {
+        meta = JSON.parse(existingMetaRaw);
+      } catch (e) {}
+    }
+    if (connectedOn) {
+      meta.con = connectedOn;
+    } else {
+      delete meta.con;
+    }
+    await storageSet(metaKey, JSON.stringify(meta));
+
     closeEditModal();
     loadAndDisplayNotes();
   });
@@ -492,6 +519,9 @@
           if (meta.name && meta.name.trim()) {
             entry.name = meta.name.trim();
           }
+          if (meta.con && String(meta.con).trim()) {
+            entry.connectedOn = String(meta.con).trim();
+          }
         } catch (e) {}
       }
       exportData[profileKey] = entry;
@@ -541,6 +571,7 @@
 
           let noteText;
           let metaName;
+          let connectedOn;
 
           if (typeof value === 'string') {
             // Old export format: plain note text string
@@ -549,6 +580,7 @@
             // New export format: { note, name? }
             noteText = value.note;
             metaName = (typeof value.name === 'string' && value.name.trim()) ? value.name.trim() : null;
+            connectedOn = (typeof value.connectedOn === 'string' && value.connectedOn.trim()) ? value.connectedOn.trim() : null;
           } else {
             skipped++;
             continue;
@@ -557,9 +589,18 @@
           const key = `note:${profileKey}`;
           await storageSet(key, noteText);
 
-          if (metaName) {
+          if (metaName || connectedOn) {
             const metaKey = `meta:${profileKey}`;
-            await storageSet(metaKey, JSON.stringify({ name: metaName }));
+            const existingMetaRaw = await storageGet(metaKey);
+            let meta = {};
+            if (existingMetaRaw) {
+              try {
+                meta = JSON.parse(existingMetaRaw);
+              } catch (e) {}
+            }
+            if (metaName) meta.name = metaName;
+            if (connectedOn) meta.con = connectedOn;
+            await storageSet(metaKey, JSON.stringify(meta));
           }
 
           imported++;

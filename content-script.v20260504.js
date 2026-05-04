@@ -1,5 +1,5 @@
 (() => {
-  const BUILD_ID = '2026-05-05-09:00';
+  const BUILD_ID = '2026-05-05-11:00';
   const SCRIPT_FILE = 'content-script.v20260504.js';
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
   const PAGE_DEBUG_LOGS_KEY = 'mjliPageDebugLogs';
@@ -255,18 +255,20 @@
             } else {
               debugLog(`[Memory Jogger] storageSet success (${(endTime - startTime).toFixed(2)}ms):`, key, `"${value.substring(0, 50)}..."`);
               
-              // If this is a note, also save the metadata (name only, no image to conserve sync space) for the dashboard
+              // If this is a note, also save metadata; read first to preserve stored fields (e.g. connected date)
               if (key.startsWith('note:') && value.trim()) {
                 const displayName = getLinkedInDisplayName();
                 const metaKey = key.replace('note:', 'meta:');
-                const metaValue = JSON.stringify({
-                  name: displayName
-                });
-                
-                chrome.storage.sync.set({ [metaKey]: metaValue }, () => {
-                  if (!chrome.runtime.lastError) {
-                    debugLog(`[Memory Jogger] Saved metadata for:`, key);
-                  }
+                chrome.storage.sync.get([metaKey], (existing) => {
+                  if (chrome.runtime.lastError) return;
+                  let meta = {};
+                  if (existing[metaKey]) { try { meta = JSON.parse(existing[metaKey]); } catch(e) {} }
+                  if (displayName) meta.name = displayName;
+                  chrome.storage.sync.set({ [metaKey]: JSON.stringify(meta) }, () => {
+                    if (!chrome.runtime.lastError) {
+                      debugLog(`[Memory Jogger] Saved metadata for:`, key);
+                    }
+                  });
                 });
               }
             }
@@ -382,25 +384,32 @@
     if (didMount) {
       scheduleRenderForCurrentProfile(80);
 
-      // Opportunistically refresh the stored name whenever the panel mounts,
-      // so the dashboard always reflects the current real name even after imports.
+      // Opportunistically refresh metadata (name + connected date) whenever the panel mounts.
       setTimeout(() => {
         try {
           const name = getLinkedInDisplayName();
-          if (name) {
+          const detectedCon = getLinkedInConnectedDate();
+          if (name || detectedCon) {
             const metaKey = `meta:${profileKey}`;
-            const metaValue = JSON.stringify({ name });
-            chrome.storage.sync.set({ [metaKey]: metaValue }, () => {
-              if (chrome.runtime && !chrome.runtime.lastError) {
-                debugLog('[Memory Jogger] Refreshed name metadata on mount:', name);
-              }
+            chrome.storage.sync.get([metaKey], (result) => {
+              if (chrome.runtime && chrome.runtime.lastError) return;
+              let meta = {};
+              if (result[metaKey]) { try { meta = JSON.parse(result[metaKey]); } catch(e) {} }
+              if (name) meta.name = name;
+              // Only auto-fill con if not already set (don't overwrite user-entered dates)
+              if (detectedCon && !meta.con) meta.con = detectedCon;
+              chrome.storage.sync.set({ [metaKey]: JSON.stringify(meta) }, () => {
+                if (chrome.runtime && !chrome.runtime.lastError) {
+                  debugLog('[Memory Jogger] Refreshed metadata on mount:', meta.name, meta.con || '');
+                }
+              });
             });
           }
         } catch (e) {
           // Silent — metadata refresh must never break the panel
         }
       }, 500); // Small delay to let the page title / h1 settle after SPA nav
-    }
+  }
   }
 
   function requestPanelMount(profileKey) {
@@ -429,11 +438,19 @@
     const content = panel.querySelector("#mjli-content");
     editMode = false;
 
-    storageGet(storageKey).then((noteText) => {
+    const metaKey = storageKey.replace('note:', 'meta:');
+    Promise.all([storageGet(storageKey), storageGet(metaKey)]).then(([noteText, metaRaw]) => {
+      let connectedDate = null;
+      if (metaRaw) { try { connectedDate = JSON.parse(metaRaw).con || null; } catch(e) {} }
+      const conHtml = connectedDate
+        ? `<div class="mjli-connected-date">🔗 Connected: ${escapeHtml(connectedDate)}</div>`
+        : '';
+
       if (!noteText.trim()) {
         // Empty state: show CTA to add note
         content.innerHTML = `
           <p class="mjli-empty">No note yet. Click to add one.</p>
+          ${conHtml}
           <button id="mjli-add" class="mjli-btn-primary">Add note</button>
         `;
         content.querySelector("#mjli-add").addEventListener("click", () =>
@@ -443,6 +460,7 @@
         // Show note with edit/delete buttons
         content.innerHTML = `
           <div class="mjli-note-display">${escapeHtml(noteText)}</div>
+          ${conHtml}
           <div class="mjli-actions">
             <button id="mjli-edit" class="mjli-btn-secondary">Edit</button>
             <button id="mjli-delete" class="mjli-btn-danger">Delete</button>
@@ -467,7 +485,11 @@
     const content = panel.querySelector("#mjli-content");
     editMode = true;
 
-    storageGet(storageKey).then((noteText) => {
+    const metaKey = storageKey.replace('note:', 'meta:');
+    Promise.all([storageGet(storageKey), storageGet(metaKey)]).then(([noteText, metaRaw]) => {
+      let connectedDate = '';
+      if (metaRaw) { try { connectedDate = JSON.parse(metaRaw).con || ''; } catch(e) {} }
+
       content.innerHTML = `
         <textarea
           id="mjli-textarea"
@@ -475,6 +497,17 @@
           placeholder="e.g., Met at TechCon 2024... worked together at Acme Corp..."
           maxlength="200"
         >${escapeHtml(noteText)}</textarea>
+        <div class="mjli-connected-input-row">
+          <label for="mjli-connected" class="mjli-connected-label">Connected:</label>
+          <input
+            id="mjli-connected"
+            type="text"
+            class="mjli-connected-input"
+            placeholder="e.g., Jan 2024"
+            maxlength="20"
+            value="${escapeHtml(connectedDate)}"
+          >
+        </div>
         <div class="mjli-edit-footer">
           <div class="mjli-counter-section">
             <span id="mjli-counter" class="mjli-counter"></span>
@@ -488,6 +521,7 @@
       `;
 
       const textarea = content.querySelector("#mjli-textarea");
+      const connectedInput = content.querySelector("#mjli-connected");
       const counter = content.querySelector("#mjli-counter");
       const saveBtn = content.querySelector("#mjli-save");
       const cancelBtn = content.querySelector("#mjli-cancel");
@@ -503,9 +537,24 @@
 
       saveBtn.addEventListener("click", async () => {
         const value = textarea.value.trim();
+        const newCon = connectedInput.value.trim();
         await storageSet(storageKey, value);
+        // Save connected date into meta, preserving other stored fields
+        const existingMetaRaw = await storageGet(metaKey);
+        let meta = {};
+        if (existingMetaRaw) { try { meta = JSON.parse(existingMetaRaw); } catch(e) {} }
+        if (newCon) {
+          meta.con = newCon;
+        } else {
+          delete meta.con;
+        }
+        await new Promise((resolve) => {
+          try {
+            chrome.storage.sync.set({ [metaKey]: JSON.stringify(meta) }, () => resolve());
+          } catch(e) { resolve(); }
+        });
         renderNoteContent(storageKey);
-        updateAllProfileImageIndicators(); // Refresh indicators
+        updateAllProfileImageIndicators();
       });
 
       cancelBtn.addEventListener("click", () => {
@@ -603,18 +652,46 @@
   }
 
   function getLinkedInProfileImage() {
-    // Get the profile image URL if available
-    const imgElement = document.querySelector('[data-test-id="top-card"] img[alt*="profile"], [data-test-id*="profile"] img[alt*="profile"]');
-    if (imgElement && imgElement.src) {
-      return imgElement.src;
+      // Fallback: Return empty string, dashboard will use URL-based name
+      return '';
     }
-    return '';
-  }
 
-  function escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
+  function getLinkedInConnectedDate() {
+    // Try to find the "Connected on" date from the page.
+    // LinkedIn shows this in the Contact info modal when it's open,
+    // or occasionally inline on the profile page.
+
+    // Strategy 1: Contact info modal is open — look for a time element near "Connected" text
+    const modal = document.querySelector('.artdeco-modal, [role="dialog"]');
+    if (modal) {
+      const timeEl = modal.querySelector('time[datetime]');
+      if (timeEl && timeEl.dateTime) {
+        // dateTime may be "2024-01" or "2024-01-15"
+        const m = timeEl.dateTime.match(/^(\d{4}-\d{2})/);
+        if (m) {
+          // Convert YYYY-MM to "Mon YYYY" for readability
+          const [year, month] = m[1].split('-');
+          const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const monthName = monthNames[parseInt(month, 10) - 1];
+          if (monthName) return `${monthName} ${year}`;
+        }
+      }
+      // Also try matching "Connected [Month Year]" text inside the modal
+      const text = modal.textContent;
+      const connMatch = text.match(/Connected\s+((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\.?\s+\d{4})/i);
+      if (connMatch) return connMatch[1].trim();
+    }
+
+    // Strategy 2: Look for "Connected [Month Year]" text anywhere visible on the page
+    const allSpans = document.querySelectorAll('span, li');
+    for (const el of allSpans) {
+      if (el.children.length > 0) continue; // skip containers, only leaf text nodes
+      const text = el.textContent.trim();
+      const m = text.match(/^Connected\s+((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\.?\s+\d{4})$/i);
+      if (m) return m[1].trim();
+    }
+
+    return null;
   }
 
   function truncateText(text, maxLength) {
@@ -633,14 +710,24 @@
     return altText;
   }
 
-  function createTooltip(name, noteText) {
+  function createTooltip(name, noteText, connectedDate) {
     removeExistingTooltip();
     const tooltip = document.createElement("div");
     tooltip.id = TOOLTIP_ID;
     tooltip.className = "mjli-tooltip";
-    // Just show the note text, truncated to 60 chars
     const truncatedNote = truncateText(noteText, 60);
-    tooltip.textContent = truncatedNote;
+    if (connectedDate) {
+      const noteDiv = document.createElement('div');
+      noteDiv.className = 'mjli-tooltip-note';
+      noteDiv.textContent = truncatedNote;
+      const conDiv = document.createElement('div');
+      conDiv.className = 'mjli-tooltip-connected';
+      conDiv.textContent = `Connected: ${connectedDate}`;
+      tooltip.appendChild(noteDiv);
+      tooltip.appendChild(conDiv);
+    } else {
+      tooltip.textContent = truncatedNote;
+    }
     document.body.appendChild(tooltip);
     return tooltip;
   }
@@ -666,10 +753,12 @@
 
     img.addEventListener("mouseenter", async () => {
       debugLog('[Memory Jogger] Hover on image for:', profileKey);
-      const noteText = await storageGet(storageKey);
+      const metaKey = `meta:${profileKey}`;
+      const [noteText, metaRaw] = await Promise.all([storageGet(storageKey), storageGet(metaKey)]);
       debugLog('[Memory Jogger] Note text:', noteText ? noteText.substring(0, 30) : '(empty)');
-      
       if (!noteText.trim()) return; // Only show tooltip if there's a note
+      let connectedDate = null;
+      if (metaRaw) { try { connectedDate = JSON.parse(metaRaw).con || null; } catch(e) {} }
 
       // Save original attributes before clearing
       const originalTitle = img.title;
@@ -707,7 +796,7 @@
       }
 
       debugLog('[Memory Jogger] Showing tooltip for:', name);
-      const tooltip = createTooltip(name, noteText);
+      const tooltip = createTooltip(name, noteText, connectedDate);
       updateTooltipPosition({ target: img }, tooltip);
 
       const moveHandler = (e) => updateTooltipPosition({ target: img }, tooltip);

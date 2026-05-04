@@ -227,3 +227,56 @@
   height: 16px;
   display: block;
 }
+
+  /* Connected on date — shown in the note panel below note text */
+  .mjli-connected-date {
+    font-size: 11px;
+    color: #0a66c2;
+    margin-top: 4px;
+    margin-bottom: 8px;
+    font-style: italic;
+  }
+
+  /* Connected on input row in edit mode */
+  .mjli-connected-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .mjli-connected-label {
+    font-size: 11px;
+    color: #666;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .mjli-connected-input {
+    flex: 1;
+    border: 1px solid #c7ccd1;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    color: #222;
+  }
+
+  .mjli-connected-input:focus {
+    outline: none;
+    border-color: #0a66c2;
+    box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.1);
+  }
+
+  /* Tooltip — note text line and connected date line */
+  .mjli-tooltip-note {
+    display: block;
+  }
+
+  .mjli-tooltip-connected {
+    display: block;
+    font-size: 9px;
+    opacity: 0.8;
+    margin-top: 4px;
+  }

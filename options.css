@@ -439,3 +439,30 @@
   font-weight: 500;
   margin-bottom: 16px;
 }
+
+.mjli-modal-connected-row {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mjli-modal-connected-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #414141;
+}
+
+.mjli-modal-connected-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.mjli-modal-connected-input:focus {
+  outline: none;
+  border-color: #0a66c2;
+  box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.1);
+}
