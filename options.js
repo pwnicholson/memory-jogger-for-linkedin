@@ -15,6 +15,10 @@
   const editProfileName = document.getElementById('mjli-edit-profile-name');
   const searchInput = document.getElementById('mjli-search-input');
   const devLoggingToggle = document.getElementById('mjli-dev-logging-toggle');
+  const tabPeople = document.getElementById('mjli-tab-people');
+  const tabCompanies = document.getElementById('mjli-tab-companies');
+
+  let activeTab = 'people'; // 'people' | 'companies'
 
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
 
@@ -198,18 +202,22 @@
     notesList.innerHTML = '<div class="mjli-loading">Loading notes...</div>';
     
     const allData = await storageGetAll();
-    const noteEntries = Object.entries(allData).filter(([key]) => key.startsWith('note:'));
+    const prefix = activeTab === 'people' ? 'note:/in/' : 'note:/company/';
+    const noteEntries = Object.entries(allData).filter(([key]) => key.startsWith(prefix));
     
     allNotesData = {}; // Store for filtering
     
     await updateStorageInfo();
 
     if (noteEntries.length === 0) {
+      const emptyMsg = activeTab === 'people'
+        ? 'Your saved notes will appear here. Add notes when viewing profiles on LinkedIn!'
+        : 'Your saved company notes will appear here. Add notes when viewing company pages on LinkedIn!';
       notesList.innerHTML = `
         <div class="mjli-empty-state">
           <div class="mjli-empty-state-icon">📭</div>
           <h3>No notes yet</h3>
-          <p>Your saved notes will appear here. Add notes when viewing profiles on LinkedIn!</p>
+          <p>${emptyMsg}</p>
         </div>
       `;
       return;
@@ -224,7 +232,11 @@
     for (const [key, noteText] of noteEntries) {
       const profileKey = key.replace('note:', '');
       const metaKey = key.replace('note:', 'meta:');
-      const profileName = profileKey.replace('/in/', '');
+      const isCompany = activeTab === 'companies';
+      // For people: strip /in/ prefix; for companies: strip /company/ prefix
+      const profileName = isCompany
+        ? profileKey.replace('/company/', '')
+        : profileKey.replace('/in/', '');
       
       // Build displayName with multiple fallback strategies
       let displayName = '';
@@ -248,31 +260,40 @@
         }
       }
       
-      // Strategy 2: If no valid metadata name, create from profile URL
+      // Strategy 2: If no valid metadata name, create from profile/company URL
       if (!displayName) {
-        // Try to extract just the name parts (remove numeric user IDs if present)
-        // LinkedIn URLs like /in/matt-jalove-07057551 should become "Matt Jalove" not "Matt Jalove 07057551"
-        let nameFromUrl = profileName;
-        
-        // Remove trailing numeric ID (common pattern: name-number)
-        // Match last segment if it's all numbers, and remove it
-        nameFromUrl = nameFromUrl.replace(/-\d+$/, '');
-        
-        // Now convert remaining URL to a name
-        // /in/charles-settles -> "Charles Settles"
-        displayName = nameFromUrl
-          .split('-')
-          .map(part => {
-            // Capitalize first letter, lowercase rest
-            if (part.length === 0 || /^\d+$/.test(part)) return '';
-            return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-          })
-          .filter(part => part.length > 0)
-          .join(' ');
-        
-        // Fallback if everything filtered out
-        if (!displayName || displayName.length === 0) {
-          displayName = profileName.replace(/-/g, ' ').replace(/\d+/g, '').trim() || profileName;
+        if (isCompany) {
+          // Company slug: google-deepmind → "Google Deepmind"
+          displayName = profileName
+            .split('-')
+            .map(part => part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : '')
+            .filter(part => part.length > 0)
+            .join(' ') || profileName;
+        } else {
+          // Try to extract just the name parts (remove numeric user IDs if present)
+          // LinkedIn URLs like /in/matt-jalove-07057551 should become "Matt Jalove" not "Matt Jalove 07057551"
+          let nameFromUrl = profileName;
+          
+          // Remove trailing numeric ID (common pattern: name-number)
+          // Match last segment if it's all numbers, and remove it
+          nameFromUrl = nameFromUrl.replace(/-\d+$/, '');
+          
+          // Now convert remaining URL to a name
+          // /in/charles-settles -> "Charles Settles"
+          displayName = nameFromUrl
+            .split('-')
+            .map(part => {
+              // Capitalize first letter, lowercase rest
+              if (part.length === 0 || /^\d+$/.test(part)) return '';
+              return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+            })
+            .filter(part => part.length > 0)
+            .join(' ');
+          
+          // Fallback if everything filtered out
+          if (!displayName || displayName.length === 0) {
+            displayName = profileName.replace(/-/g, ' ').replace(/\d+/g, '').trim() || profileName;
+          }
         }
       }
       
@@ -305,11 +326,12 @@
       // Create note item
       const noteItem = document.createElement('div');
       noteItem.className = 'mjli-note-item';
+      const avatarClass = isCompany ? 'mjli-profile-avatar mjli-company-avatar' : 'mjli-profile-avatar';
       
       noteItem.innerHTML = `
         <div class="mjli-note-item-header">
           <div class="mjli-note-item-profile">
-            <div class="mjli-profile-avatar">${escapeHtml(initials)}</div>
+            <div class="${avatarClass}">${escapeHtml(initials)}</div>
             <div class="mjli-profile-details">
               <a href="https://www.linkedin.com${profileKey}" target="_blank" class="mjli-profile-name">
                 ${escapeHtml(displayName)}
@@ -414,6 +436,27 @@
     }
   });
 
+  // --- Tab Switching ---
+  function setActiveTab(tab) {
+    activeTab = tab;
+    tabPeople.classList.toggle('is-active', tab === 'people');
+    tabCompanies.classList.toggle('is-active', tab === 'companies');
+    if (searchInput) {
+      searchInput.placeholder = tab === 'people'
+        ? 'Search people notes by name or content...'
+        : 'Search company notes by name or content...';
+      searchInput.value = '';
+    }
+    loadAndDisplayNotes();
+  }
+
+  if (tabPeople) {
+    tabPeople.addEventListener('click', () => setActiveTab('people'));
+  }
+  if (tabCompanies) {
+    tabCompanies.addEventListener('click', () => setActiveTab('companies'));
+  }
+
   // --- Search/Filter ---
   if (searchInput) {
     let searchTimeout;
@@ -441,7 +484,17 @@
     const exportData = {};
     for (const [key, value] of noteEntries) {
       const profileKey = key.replace('note:', '');
-      exportData[profileKey] = value;
+      const metaKey = `meta:${profileKey}`;
+      const entry = { note: value };
+      if (allData[metaKey]) {
+        try {
+          const meta = JSON.parse(allData[metaKey]);
+          if (meta.name && meta.name.trim()) {
+            entry.name = meta.name.trim();
+          }
+        } catch (e) {}
+      }
+      exportData[profileKey] = entry;
     }
 
     const dataStr = JSON.stringify(exportData, null, 2);
@@ -479,16 +532,36 @@
         let imported = 0;
         let skipped = 0;
 
-        for (const [profileKey, noteText] of Object.entries(importedData)) {
+        for (const [profileKey, value] of Object.entries(importedData)) {
           // Validate profile key format (supports special characters like %E2%9A%A1)
-          if (!profileKey.startsWith('/in/') || typeof noteText !== 'string') {
+          if (!profileKey.startsWith('/in/') && !profileKey.startsWith('/company/')) {
+            skipped++;
+            continue;
+          }
+
+          let noteText;
+          let metaName;
+
+          if (typeof value === 'string') {
+            // Old export format: plain note text string
+            noteText = value;
+          } else if (value && typeof value === 'object' && typeof value.note === 'string') {
+            // New export format: { note, name? }
+            noteText = value.note;
+            metaName = (typeof value.name === 'string' && value.name.trim()) ? value.name.trim() : null;
+          } else {
             skipped++;
             continue;
           }
 
           const key = `note:${profileKey}`;
           await storageSet(key, noteText);
-          // metadata is auto-saved by storageSet when note is set
+
+          if (metaName) {
+            const metaKey = `meta:${profileKey}`;
+            await storageSet(metaKey, JSON.stringify({ name: metaName }));
+          }
+
           imported++;
         }
 

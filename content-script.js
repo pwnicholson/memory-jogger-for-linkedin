@@ -1,5 +1,5 @@
 (() => {
-  const BUILD_ID = '2026-05-04-23:10';
+  const BUILD_ID = '2026-05-05-09:00';
   const SCRIPT_FILE = 'content-script.v20260504.js';
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
   const PAGE_DEBUG_LOGS_KEY = 'mjliPageDebugLogs';
@@ -146,6 +146,19 @@
 
   function getProfileKey() {
     return getProfileKeyFromUrl(window.location.pathname);
+  }
+
+  function getCompanyKeyFromUrl(url) {
+    const match = url.match(/\/company\/([^\/\?#]+)/i);
+    return match ? `/company/${match[1].toLowerCase()}` : null;
+  }
+
+  function getEntityKeyFromUrl(url) {
+    return getProfileKeyFromUrl(url) || getCompanyKeyFromUrl(url);
+  }
+
+  function getEntityKey() {
+    return getEntityKeyFromUrl(window.location.pathname);
   }
 
   function waitForElement(selector, timeout = 3000) {
@@ -360,7 +373,7 @@
   async function mountPanelForProfile(profileKey, nonce) {
     // For first-load reliability, mount immediately to deterministic body-top anchor.
     const waitResult = 'immediate';
-    if (nonce !== panelMountNonce || getProfileKey() !== profileKey) return;
+    if (nonce !== panelMountNonce || getEntityKey() !== profileKey) return;
 
     const storageKey = `note:${profileKey}`;
     debugLog('[Memory Jogger] Profile readiness result, mounting panel:', { profileKey, waitResult });
@@ -368,6 +381,25 @@
     debugLog('[Memory Jogger] Panel mount result:', { profileKey, didMount });
     if (didMount) {
       scheduleRenderForCurrentProfile(80);
+
+      // Opportunistically refresh the stored name whenever the panel mounts,
+      // so the dashboard always reflects the current real name even after imports.
+      setTimeout(() => {
+        try {
+          const name = getLinkedInDisplayName();
+          if (name) {
+            const metaKey = `meta:${profileKey}`;
+            const metaValue = JSON.stringify({ name });
+            chrome.storage.sync.set({ [metaKey]: metaValue }, () => {
+              if (chrome.runtime && !chrome.runtime.lastError) {
+                debugLog('[Memory Jogger] Refreshed name metadata on mount:', name);
+              }
+            });
+          }
+        } catch (e) {
+          // Silent — metadata refresh must never break the panel
+        }
+      }, 500); // Small delay to let the page title / h1 settle after SPA nav
     }
   }
 
@@ -778,11 +810,11 @@
   }
 
   function findAndEnhanceAllProfileImages() {
-    // Special handling for profile page main avatar
-    const profileKey = getProfileKey();
+    // Special handling for profile/company page main avatar
+    const profileKey = getEntityKey();
     if (profileKey) {
-      // Look for the main profile avatar at the top of the page
-      const topCard = document.querySelector('[data-test-id="top-card"]');
+      // Look for the main avatar at the top of the page (profile or company)
+      const topCard = document.querySelector('[data-test-id="top-card"], .org-top-card, section[class*="org-top-card"]');
       if (topCard) {
         // Find all images in top card and take the first substantial one (likely the avatar)
         const topCardImages = topCard.querySelectorAll('img');
@@ -819,10 +851,10 @@
 
       let profileKey = null;
 
-      // Strategy 1: Direct parent is a profile link
-      const directLink = img.closest('a[href*="/in/"]');
+      // Strategy 1: Direct parent is a profile or company link
+      const directLink = img.closest('a[href*="/in/"], a[href*="/company/"]');
       if (directLink) {
-        profileKey = getProfileKeyFromUrl(directLink.href);
+        profileKey = getEntityKeyFromUrl(directLink.href);
         if (profileKey) {
           img.dataset.mjliProcessed = "true";
           processed++;
@@ -832,12 +864,12 @@
         }
       }
 
-      // Strategy 2: Search siblings and nearby elements for profile links
+      // Strategy 2: Search siblings and nearby elements for profile or company links
       let searchParent = img.parentElement;
       for (let depth = 0; depth < 4 && searchParent; depth++) {
-        const profileLinks = searchParent.querySelectorAll('a[href*="/in/"]');
+        const profileLinks = searchParent.querySelectorAll('a[href*="/in/"], a[href*="/company/"]');
         if (profileLinks.length > 0) {
-          profileKey = getProfileKeyFromUrl(profileLinks[0].href);
+          profileKey = getEntityKeyFromUrl(profileLinks[0].href);
           if (profileKey) {
             break;
           }
@@ -845,13 +877,13 @@
         searchParent = searchParent.parentElement;
       }
 
-      // Strategy 3: Check if image is in a card with a profile link somewhere
+      // Strategy 3: Check if image is in a card with a profile or company link somewhere
       if (!profileKey) {
         const card = img.closest('[data-test-id*="feed"], [data-test-id*="card"], article, li');
         if (card) {
-          const profileLink = card.querySelector('a[href*="/in/"]');
+          const profileLink = card.querySelector('a[href*="/in/"], a[href*="/company/"]');
           if (profileLink) {
-            profileKey = getProfileKeyFromUrl(profileLink.href);
+            profileKey = getEntityKeyFromUrl(profileLink.href);
           }
         }
       }
@@ -899,7 +931,7 @@
   }
 
   function renderForCurrentProfile() {
-    const profileKey = getProfileKey();
+    const profileKey = getEntityKey();
     debugLog('[Memory Jogger] Check page:', { profileKey, hasPanel: !!document.getElementById(ROOT_ID) });
 
     if (!profileKey) {
