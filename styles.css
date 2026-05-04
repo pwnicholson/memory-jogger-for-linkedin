@@ -1,5 +1,13 @@
+/* Panel uses position:fixed so it renders above LinkedIn's app shell
+   regardless of where in the DOM tree it is inserted. */
 #mjli-root {
-  margin: 12px 0;
+  position: fixed;
+  top: 62px;           /* clears LinkedIn's ~52px global nav */
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(528px, calc(100vw - 32px));
+  z-index: 9999;
+  margin: 0;
 }
 
 .mjli-panel {

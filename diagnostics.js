@@ -1,5 +1,7 @@
 // Memory Jogger - Sync Diagnostics Script
 
+const PAGE_DEBUG_LOGS_KEY = 'mjliPageDebugLogs';
+
 async function getMachineInfo() {
   const info = {
     timestamp: new Date().toISOString(),
@@ -261,17 +263,35 @@ Conclusion:
 
 async function getLogs() {
   try {
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action: 'getLogs' }, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(response);
-        }
+    let workerLogs = '';
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: 'getLogs' }, (resp) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(resp || {});
+          }
+        });
       });
-    });
-    
-    document.getElementById('logs').textContent = response.logs || 'No logs available';
+      workerLogs = response.logs || '';
+    } catch (e) {
+      workerLogs = `⚠️ Could not fetch service worker logs: ${e.message}`;
+    }
+
+    const localResult = await chrome.storage.local.get([PAGE_DEBUG_LOGS_KEY]);
+    const pageLogsArray = Array.isArray(localResult[PAGE_DEBUG_LOGS_KEY]) ? localResult[PAGE_DEBUG_LOGS_KEY] : [];
+    const pageLogs = pageLogsArray.join('\n');
+
+    const sections = [
+      '=== SERVICE WORKER LOGS ===',
+      workerLogs || '(none)',
+      '',
+      '=== PAGE DEBUG LOGS (PERSISTENT) ===',
+      pageLogs || '(none)'
+    ];
+
+    document.getElementById('logs').textContent = sections.join('\n');
   } catch (e) {
     document.getElementById('logs').textContent = `❌ Error: ${e.message}`;
   }
@@ -280,10 +300,11 @@ async function getLogs() {
 async function clearLogs() {
   try {
     await new Promise((resolve) => {
-      chrome.runtime.sendMessage({ action: 'clearLogs' }, (response) => {
+      chrome.runtime.sendMessage({ action: 'clearLogs' }, () => {
         resolve();
       });
     });
+    await chrome.storage.local.remove([PAGE_DEBUG_LOGS_KEY]);
     document.getElementById('logs').textContent = '✅ Logs cleared';
   } catch (e) {
     document.getElementById('logs').textContent = `❌ Error: ${e.message}`;

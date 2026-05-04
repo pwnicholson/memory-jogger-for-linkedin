@@ -14,6 +14,9 @@
   const editCounter = document.getElementById('mjli-edit-counter');
   const editProfileName = document.getElementById('mjli-edit-profile-name');
   const searchInput = document.getElementById('mjli-search-input');
+  const devLoggingToggle = document.getElementById('mjli-dev-logging-toggle');
+
+  const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
 
   let currentEditingKey = null;
   let allNotesData = {}; // Cache for filtering
@@ -119,6 +122,45 @@
         resolve();
       }
     });
+  }
+
+  function getLocalSetting(key, fallbackValue) {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get([key], (result) => {
+          if (chrome.runtime.lastError) {
+            resolve(fallbackValue);
+            return;
+          }
+          resolve(typeof result[key] === 'undefined' ? fallbackValue : result[key]);
+        });
+      } catch (e) {
+        resolve(fallbackValue);
+      }
+    });
+  }
+
+  function setLocalSetting(key, value) {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.set({ [key]: value }, () => resolve());
+      } catch (e) {
+        resolve();
+      }
+    });
+  }
+
+  function updateDevLoggingToggleStyle(isEnabled) {
+    const wrapper = devLoggingToggle ? devLoggingToggle.closest('.mjli-dev-toggle') : null;
+    if (!wrapper) return;
+    wrapper.classList.toggle('is-enabled', !!isEnabled);
+  }
+
+  async function loadDevLoggingSetting() {
+    if (!devLoggingToggle) return;
+    const isEnabled = await getLocalSetting(DEV_LOGGING_KEY, false);
+    devLoggingToggle.checked = !!isEnabled;
+    updateDevLoggingToggleStyle(isEnabled);
   }
 
   // --- Utility Functions ---
@@ -383,6 +425,14 @@
     });
   }
 
+  if (devLoggingToggle) {
+    devLoggingToggle.addEventListener('change', async (e) => {
+      const enabled = !!e.target.checked;
+      await setLocalSetting(DEV_LOGGING_KEY, enabled);
+      updateDevLoggingToggleStyle(enabled);
+    });
+  }
+
   // --- Export Notes ---
   exportBtn.addEventListener('click', async () => {
     const allData = await storageGetAll();
@@ -465,5 +515,6 @@
   }
 
   // --- Initial Load ---
+  loadDevLoggingSetting();
   loadAndDisplayNotes();
 })();

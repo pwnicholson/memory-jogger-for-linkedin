@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Memory Jogger for LinkedIn",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Add a private 'How I know them' note to LinkedIn profiles. By Paul Nicholson (pwnicholson.com). Not an official LinkedIn app.",
   "permissions": ["storage"],
   "host_permissions": ["https://www.linkedin.com/*"],
@@ -32,7 +32,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/*"],
-      "js": ["content-script.js"],
+      "js": ["content-script.v20260504.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"
     }

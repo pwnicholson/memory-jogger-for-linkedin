@@ -1,5 +1,7 @@
 console.log('[Memory Jogger] Service worker loaded');
 
+const BUILD_ID = '2026-05-04-22:45';
+
 // In-memory log storage for diagnostics
 let debugLogs = [];
 const MAX_LOGS = 100;
@@ -15,7 +17,7 @@ function addLog(message, level = 'info') {
 }
 
 // Check Chrome sync status on startup
-addLog('Service worker initializing...');
+addLog(`Service worker initializing... build=${BUILD_ID}`);
 chrome.storage.sync.get(null, (result) => {
   try {
     if (chrome.runtime.lastError) {
@@ -70,6 +72,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
     }
     
+    if (request.action === 'contentLog') {
+      addLog(`[PAGE] ${request.message || ''}`);
+      sendResponse({ ok: true });
+      return true;
+    }
+
     if (request.action === 'getLogs') {
       addLog('Logs requested');
       sendResponse({ logs: debugLogs.join('\n') });

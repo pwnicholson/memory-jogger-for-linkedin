@@ -27,6 +27,6 @@ A minimal Chrome Extension (Manifest V3) that adds a private **"How I know them"
 ## Project files
 
 - `manifest.json` – extension configuration
-- `content-script.js` – note UI injection and storage logic
+- `content-script.v20260504.js` – active content script referenced by manifest (with `content-script.js` kept as a mirrored source copy)
 - `styles.css` – panel styles
 - `popup.html` – simple extension popup

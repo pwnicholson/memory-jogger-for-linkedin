@@ -79,6 +79,30 @@
   flex-wrap: wrap;
 }
 
+.mjli-dev-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #f7f9fb;
+  color: #414141;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mjli-dev-toggle input {
+  margin: 0;
+}
+
+.mjli-dev-toggle.is-enabled {
+  border-color: #0a66c2;
+  background: #e8f4fd;
+  color: #0a66c2;
+}
+
 .mjli-options-content {
   padding: 40px;
 }
@@ -336,6 +360,11 @@
 
   .mjli-toolbar-actions button {
     flex: 1;
+  }
+
+  .mjli-dev-toggle {
+    width: 100%;
+    justify-content: center;
   }
 
   .mjli-options-content {
