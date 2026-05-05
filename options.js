@@ -1,4 +1,4 @@
-(() => {
+(async () => {
   console.log('[Memory Jogger] Options page loaded');
 
   const notesList = document.getElementById('mjli-notes-list');
@@ -662,7 +662,7 @@
   }
 
   // --- Initial Load ---
-  loadDateFormatPreference();
+  await loadDateFormatPreference();
   loadDevLoggingSetting();
   loadAndDisplayNotes();
 })();
