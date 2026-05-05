@@ -437,11 +437,12 @@
 
     const content = panel.querySelector("#mjli-content");
     editMode = false;
+    const isCompanyPage = storageKey.includes('/company/');
 
     const metaKey = storageKey.replace('note:', 'meta:');
     Promise.all([storageGet(storageKey), storageGet(metaKey)]).then(([noteText, metaRaw]) => {
       let connectedDate = null;
-      if (metaRaw) { try { connectedDate = JSON.parse(metaRaw).con || null; } catch(e) {} }
+      if (!isCompanyPage && metaRaw) { try { connectedDate = JSON.parse(metaRaw).con || null; } catch(e) {} }
       const conHtml = connectedDate
         ? `<div class="mjli-connected-date">🔗 Connected: ${escapeHtml(connectedDate)}</div>`
         : '';
@@ -484,11 +485,24 @@
 
     const content = panel.querySelector("#mjli-content");
     editMode = true;
+    const isCompanyPage = storageKey.includes('/company/');
 
     const metaKey = storageKey.replace('note:', 'meta:');
     Promise.all([storageGet(storageKey), storageGet(metaKey)]).then(([noteText, metaRaw]) => {
       let connectedDate = '';
-      if (metaRaw) { try { connectedDate = JSON.parse(metaRaw).con || ''; } catch(e) {} }
+      if (!isCompanyPage && metaRaw) { try { connectedDate = JSON.parse(metaRaw).con || ''; } catch(e) {} }
+
+      const connectedInputRow = !isCompanyPage
+        ? `<div class="mjli-connected-input-row">
+          <label for="mjli-connected" class="mjli-connected-label">Connected:</label>
+          <input
+            id="mjli-connected"
+            type="date"
+            class="mjli-connected-input"
+            value="${connectedDate}"
+          >
+        </div>`
+        : '';
 
       content.innerHTML = `
         <textarea
@@ -497,15 +511,7 @@
           placeholder="e.g., Met at TechCon 2024... worked together at Acme Corp..."
           maxlength="200"
         >${escapeHtml(noteText)}</textarea>
-        <div class="mjli-connected-input-row">
-          <label for="mjli-connected" class="mjli-connected-label">Connected:</label>
-          <input
-            id="mjli-connected"
-            type="date"
-            class="mjli-connected-input"
-            value="${connectedDate}"
-          >
-        </div>
+        ${connectedInputRow}
         <div class="mjli-edit-footer">
           <div class="mjli-counter-section">
             <span id="mjli-counter" class="mjli-counter"></span>
@@ -535,7 +541,7 @@
 
       saveBtn.addEventListener("click", async () => {
         const value = textarea.value.trim();
-        const newCon = connectedInput.value.trim();
+        const newCon = connectedInput ? connectedInput.value.trim() : '';
         await storageSet(storageKey, value);
         // Save connected date into meta, preserving other stored fields
         const existingMetaRaw = await storageGet(metaKey);

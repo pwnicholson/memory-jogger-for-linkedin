@@ -14,6 +14,7 @@
   const editCounter = document.getElementById('mjli-edit-counter');
   const editProfileName = document.getElementById('mjli-edit-profile-name');
   const editConnectedOn = document.getElementById('mjli-edit-connected-on');
+  const modalConnectedRow = document.getElementById('mjli-modal-connected-row');
   const searchInput = document.getElementById('mjli-search-input');
   const devLoggingToggle = document.getElementById('mjli-dev-logging-toggle');
   const tabPeople = document.getElementById('mjli-tab-people');
@@ -282,7 +283,8 @@
               displayName = name;
             }
           }
-          if (typeof metadata.con === 'string' && metadata.con.trim()) {
+          // Only store connected date for profile pages, not companies
+          if (!isCompany && typeof metadata.con === 'string' && metadata.con.trim()) {
             connectedDate = metadata.con.trim();
           }
         } catch (e) {
@@ -433,7 +435,14 @@
     editProfileName.textContent = profileName.replace(/-/g, ' ');
     editTextarea.value = noteText;
     const data = allNotesData[key];
-    if (editConnectedOn) {
+    const isCompanyEditModal = activeTab === 'companies';
+    
+    // Show/hide connected date field based on whether editing company or person
+    if (modalConnectedRow) {
+      modalConnectedRow.style.display = isCompanyEditModal ? 'none' : 'flex';
+    }
+    
+    if (editConnectedOn && !isCompanyEditModal) {
       editConnectedOn.value = data && data.connectedDate ? data.connectedDate : '';
     }
     updateEditCounter();
@@ -459,7 +468,8 @@
     if (!currentEditingKey) return;
     
     const newText = editTextarea.value.trim();
-    const connectedOn = editConnectedOn ? editConnectedOn.value.trim() : '';
+    const isCompanySave = activeTab === 'companies';
+    const connectedOn = !isCompanySave && editConnectedOn ? editConnectedOn.value.trim() : '';
     await storageSet(currentEditingKey, newText);
 
     const metaKey = currentEditingKey.replace('note:', 'meta:');
