@@ -1,5 +1,5 @@
 (() => {
-  const BUILD_ID = '2026-05-05-11:00';
+  const BUILD_ID = '2026-05-05-13:00';
   const SCRIPT_FILE = 'content-script.v20260504.js';
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
   const PAGE_DEBUG_LOGS_KEY = 'mjliPageDebugLogs';
@@ -501,11 +501,9 @@
           <label for="mjli-connected" class="mjli-connected-label">Connected:</label>
           <input
             id="mjli-connected"
-            type="text"
+            type="date"
             class="mjli-connected-input"
-            placeholder="e.g., Jan 2024"
-            maxlength="20"
-            value="${escapeHtml(connectedDate)}"
+            value="${connectedDate}"
           >
         </div>
         <div class="mjli-edit-footer">

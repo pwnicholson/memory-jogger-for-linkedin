@@ -29,6 +29,11 @@
       <div class="mjli-toolbar-actions">
         <button id="mjli-export-btn" class="mjli-btn-primary">Export Notes</button>
         <button id="mjli-import-btn" class="mjli-btn-secondary">Import Notes</button>
+        <select id="mjli-date-format" class="mjli-date-format-select" title="Date display format">
+          <option value="yyyy-mm-dd" selected>Date Format: YYYY-MM-DD</option>
+          <option value="mm-dd-yyyy">Date Format: MM-DD-YYYY</option>
+          <option value="dd-mm-yyyy">Date Format: DD-MM-YYYY</option>
+        </select>
         <button id="mjli-diagnostics-btn" class="mjli-btn-secondary">🔍 Diagnostics</button>
         <label class="mjli-dev-toggle" title="Enable extra console logs for debugging profile note loading">
           <input type="checkbox" id="mjli-dev-logging-toggle">
@@ -70,10 +75,8 @@
             <label for="mjli-edit-connected-on" class="mjli-modal-connected-label">Connected on</label>
             <input
               id="mjli-edit-connected-on"
-              type="text"
+              type="date"
               class="mjli-modal-connected-input"
-              placeholder="e.g., Jan 2024"
-              maxlength="20"
             >
           </div>
           <div class="mjli-edit-footer">

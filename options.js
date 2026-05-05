@@ -18,10 +18,13 @@
   const devLoggingToggle = document.getElementById('mjli-dev-logging-toggle');
   const tabPeople = document.getElementById('mjli-tab-people');
   const tabCompanies = document.getElementById('mjli-tab-companies');
+  const dateFormatSelect = document.getElementById('mjli-date-format');
 
   let activeTab = 'people'; // 'people' | 'companies'
+  let dateFormatPreference = 'yyyy-mm-dd'; // 'yyyy-mm-dd' | 'mm-dd-yyyy' | 'dd-mm-yyyy'
 
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
+  const DATE_FORMAT_KEY = 'mjliDateFormatPreference';
 
   let currentEditingKey = null;
   let allNotesData = {}; // Cache for filtering
@@ -161,6 +164,14 @@
     wrapper.classList.toggle('is-enabled', !!isEnabled);
   }
 
+  async function loadDateFormatPreference() {
+    const format = await getLocalSetting(DATE_FORMAT_KEY, 'yyyy-mm-dd');
+    dateFormatPreference = format;
+    if (dateFormatSelect) {
+      dateFormatSelect.value = format;
+    }
+  }
+
   async function loadDevLoggingSetting() {
     if (!devLoggingToggle) return;
     const isEnabled = await getLocalSetting(DEV_LOGGING_KEY, false);
@@ -173,6 +184,20 @@
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  function formatDateForDisplay(isoDate) {
+    if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate || '';
+    const [year, month, day] = isoDate.split('-');
+    switch (dateFormatPreference) {
+      case 'mm-dd-yyyy':
+        return `${month}-${day}-${year}`;
+      case 'dd-mm-yyyy':
+        return `${day}-${month}-${year}`;
+      case 'yyyy-mm-dd':
+      default:
+        return isoDate;
+    }
   }
 
   function getInitials(name) {
@@ -354,7 +379,7 @@
         </div>
         <div class="mjli-note-item-content">${escapeHtml(noteText)}</div>
         <div class="mjli-note-metadata">
-          ${noteText.length} characters${connectedDate ? ` · Connected: ${escapeHtml(connectedDate)}` : ''}
+          ${noteText.length} characters${connectedDate ? ` · Connected: ${formatDateForDisplay(connectedDate)}` : ''}
         </div>
       `;
 
@@ -482,6 +507,14 @@
   }
   if (tabCompanies) {
     tabCompanies.addEventListener('click', () => setActiveTab('companies'));
+  }
+
+  if (dateFormatSelect) {
+    dateFormatSelect.addEventListener('change', async (e) => {
+      dateFormatPreference = e.target.value;
+      await setLocalSetting(DATE_FORMAT_KEY, dateFormatPreference);
+      loadAndDisplayNotes(searchInput ? searchInput.value : '');
+    });
   }
 
   // --- Search/Filter ---
@@ -629,6 +662,7 @@
   }
 
   // --- Initial Load ---
+  loadDateFormatPreference();
   loadDevLoggingSetting();
   loadAndDisplayNotes();
 })();

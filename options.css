@@ -103,6 +103,23 @@
   color: #0a66c2;
 }
 
+.mjli-date-format-select {
+  padding: 8px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  color: #414141;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.mjli-date-format-select:focus {
+  outline: none;
+  border-color: #0a66c2;
+  box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.1);
+}
+
 .mjli-options-content {
   padding: 40px;
 }
