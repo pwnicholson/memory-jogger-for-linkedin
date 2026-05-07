@@ -4,7 +4,7 @@ Last updated: 2026-05-05
 
 ## Deferred
 
-1. Add a small "If you like this app, review it on the Chrome Web Store" link on the Dashboard.
+1. Add support for tags for filtering on the dashboard
 
 2. Make a mobile-viewable version of the Dashboard? And/or make a mobile browser wrapper that adds our functionality into mobile LinkedIn website?
 
