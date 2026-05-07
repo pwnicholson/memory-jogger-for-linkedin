@@ -23,6 +23,7 @@
 
   let activeTab = 'people'; // 'people' | 'companies'
   let dateFormatPreference = 'yyyy-mm-dd'; // 'yyyy-mm-dd' | 'mm-dd-yyyy' | 'dd-mm-yyyy'
+  let storageAreaPreference = 'sync';
 
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
   const DATE_FORMAT_KEY = 'mjliDateFormatPreference';
@@ -30,107 +31,129 @@
   let currentEditingKey = null;
   let allNotesData = {}; // Cache for filtering
 
+  function getStorageArea(areaName) {
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage[areaName] || !chrome.runtime) return null;
+      return chrome.storage[areaName];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function storageAreaGet(areaName, query) {
+    return new Promise((resolve) => {
+      const area = getStorageArea(areaName);
+      if (!area) {
+        resolve({ ok: false, data: {}, error: 'Storage API unavailable' });
+        return;
+      }
+      area.get(query, (result) => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, data: {}, error: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve({ ok: true, data: result || {} });
+      });
+    });
+  }
+
+  function storageAreaSet(areaName, data) {
+    return new Promise((resolve) => {
+      const area = getStorageArea(areaName);
+      if (!area) {
+        resolve({ ok: false, error: 'Storage API unavailable' });
+        return;
+      }
+      area.set(data, () => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve({ ok: true });
+      });
+    });
+  }
+
+  function storageAreaRemove(areaName, keys) {
+    return new Promise((resolve) => {
+      const area = getStorageArea(areaName);
+      if (!area) {
+        resolve({ ok: false, error: 'Storage API unavailable' });
+        return;
+      }
+      area.remove(keys, () => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve({ ok: true });
+      });
+    });
+  }
+
   // --- Storage Helpers ---
-  function storageGet(key) {
-    return new Promise((resolve) => {
-      try {
-        if (!chrome || !chrome.storage || !chrome.storage.sync || !chrome.runtime) {
-          resolve("");
-          return;
-        }
-        
-        chrome.storage.sync.get([key], (result) => {
-          try {
-            if (chrome.runtime.lastError) {
-              resolve("");
-            } else {
-              resolve(result[key] || "");
-            }
-          } catch (e) {
-            resolve("");
-          }
-        });
-      } catch (e) {
-        resolve("");
+  async function storageGet(key) {
+    try {
+      const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
+      let result = await storageAreaGet(preferredArea, [key]);
+      if (!result.ok && preferredArea === 'sync') {
+        storageAreaPreference = 'local';
+        console.log('[Memory Jogger] Sync unavailable, switching options storage to local:', result.error || 'unknown error');
+        result = await storageAreaGet('local', [key]);
       }
-    });
+      return result.ok ? (result.data[key] || '') : '';
+    } catch (e) {
+      return '';
+    }
   }
 
-  function storageSet(key, value) {
-    return new Promise((resolve) => {
-      try {
-        if (!chrome || !chrome.storage || !chrome.storage.sync || !chrome.runtime) {
-          resolve();
-          return;
-        }
-        
-        chrome.storage.sync.set({ [key]: value }, () => {
-          try {
-            if (chrome.runtime.lastError) {
-              console.log('[Memory Jogger] Note saved (sync may be pending)');
-            } else {
-              console.log('[Memory Jogger] Saved:', key);
-            }
-          } catch (e) {
-            // Silent
-          }
-          resolve();
-        });
-      } catch (e) {
-        resolve();
+  async function storageSet(key, value) {
+    try {
+      const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
+      let result = await storageAreaSet(preferredArea, { [key]: value });
+      if (!result.ok && preferredArea === 'sync') {
+        storageAreaPreference = 'local';
+        console.log('[Memory Jogger] Sync unavailable, switching options storage to local:', result.error || 'unknown error');
+        result = await storageAreaSet('local', { [key]: value });
       }
-    });
+      if (!result.ok) {
+        console.log('[Memory Jogger] Save failed:', key, result.error || 'unknown error');
+      }
+    } catch (e) {
+      // Silent
+    }
   }
 
-  function storageGetAll() {
-    return new Promise((resolve) => {
-      try {
-        if (!chrome || !chrome.storage || !chrome.storage.sync || !chrome.runtime) {
-          resolve({});
-          return;
-        }
-        
-        chrome.storage.sync.get(null, (result) => {
-          try {
-            if (chrome.runtime.lastError) {
-              resolve({});
-            } else {
-              resolve(result || {});
-            }
-          } catch (e) {
-            resolve({});
-          }
-        });
-      } catch (e) {
-        resolve({});
+  async function storageGetAll() {
+    try {
+      const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
+      let result = await storageAreaGet(preferredArea, null);
+      if (!result.ok && preferredArea === 'sync') {
+        storageAreaPreference = 'local';
+        console.log('[Memory Jogger] Sync unavailable, switching options storage to local:', result.error || 'unknown error');
+        result = await storageAreaGet('local', null);
       }
-    });
+      return result.ok ? (result.data || {}) : {};
+    } catch (e) {
+      return {};
+    }
   }
 
-  function storageRemove(key) {
-    return new Promise((resolve) => {
-      try {
-        if (!chrome || !chrome.storage || !chrome.storage.sync || !chrome.runtime) {
-          resolve();
-          return;
-        }
-        
-        chrome.storage.sync.remove([key], () => {
-          try {
-            if (chrome.runtime.lastError) {
-              console.log('[Memory Jogger] Note deleted (sync may be pending)');
-            } else {
-              console.log('[Memory Jogger] Deleted:', key);
-            }
-          } catch (e) {
-            // Silent
-          }
-          resolve();
-        });
-      } catch (e) {
-        resolve();
+  async function storageRemove(key) {
+    try {
+      const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
+      let result = await storageAreaRemove(preferredArea, [key]);
+      if (!result.ok && preferredArea === 'sync') {
+        storageAreaPreference = 'local';
+        console.log('[Memory Jogger] Sync unavailable, switching options storage to local:', result.error || 'unknown error');
+        result = await storageAreaRemove('local', [key]);
       }
-    });
+      if (!result.ok) {
+        console.log('[Memory Jogger] Delete failed:', key, result.error || 'unknown error');
+      }
+    } catch (e) {
+      // Silent
+    }
   }
 
   function getLocalSetting(key, fallbackValue) {

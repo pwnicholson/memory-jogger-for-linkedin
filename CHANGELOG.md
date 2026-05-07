@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 0.31 - 2026-05-07
+
+- Quick fix: resolved a storage error that could prevent notes from saving on some machines when Chrome Sync was unavailable.
+- Added local storage fallback so note save/read continues to work when sync storage is inaccessible.
+
 ## 0.3 - 2026-05-04
 
 - Added support for company pages (`/company/...`) alongside profile pages (`/in/...`).

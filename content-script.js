@@ -1,10 +1,11 @@
 (() => {
-  const BUILD_ID = '2026-05-05-13:00';
+  const BUILD_ID = '2026-05-06-19:55';
   const SCRIPT_FILE = 'content-script.v20260504.js';
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
   const PAGE_DEBUG_LOGS_KEY = 'mjliPageDebugLogs';
   const MAX_PAGE_DEBUG_LOGS = 300;
   let devLoggingEnabled = false;
+  let storageAreaPreference = 'sync';
   let panelMountInFlightNonce = null;
   let panelMountInFlightProfileKey = null;
   let panelDismissedForKey = null; // set when user closes panel; cleared on navigation
@@ -198,92 +199,112 @@
     }, delay);
   }
 
-  function storageGet(key) {
+  function getStorageArea(areaName) {
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage[areaName] || !chrome.runtime) return null;
+      return chrome.storage[areaName];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function readStorageArea(areaName, key) {
     return new Promise((resolve) => {
-      try {
-        // Check if chrome.storage is still accessible
-        if (!chrome || !chrome.storage || !chrome.storage.sync || !chrome.runtime) {
-          debugLog('[Memory Jogger] Context invalidated during storageGet:', key);
-          resolve("");
+      const area = getStorageArea(areaName);
+      if (!area) {
+        resolve({ ok: false, value: "", error: 'Storage API unavailable' });
+        return;
+      }
+      const startTime = performance.now();
+      area.get([key], (result) => {
+        const endTime = performance.now();
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, value: "", error: chrome.runtime.lastError.message, durationMs: endTime - startTime });
           return;
         }
-        
-        const startTime = performance.now();
-        chrome.storage.sync.get([key], (result) => {
-          try {
-            const endTime = performance.now();
-            if (chrome.runtime.lastError) {
-              // Silent fail - context may be invalidated
-              debugLog(`[Memory Jogger] storageGet error (${(endTime - startTime).toFixed(2)}ms):`, key, chrome.runtime.lastError.message);
-              resolve("");
-            } else {
-              const value = result[key] || "";
-              debugLog(`[Memory Jogger] storageGet success (${(endTime - startTime).toFixed(2)}ms):`, key, `"${value.substring(0, 50)}..."`);
-              resolve(value);
-            }
-          } catch (e) {
-            // Context invalidated in callback - silent fail
-            debugLog('[Memory Jogger] storageGet callback error:', key, e.message);
-            resolve("");
-          }
-        });
-      } catch (e) {
-        // Context invalidated - silent fail
-        debugLog('[Memory Jogger] storageGet outer error:', key, e.message);
-        resolve("");
-      }
+        const value = result[key] || "";
+        resolve({ ok: true, value, durationMs: endTime - startTime });
+      });
     });
   }
 
-  function storageSet(key, value) {
+  function writeStorageArea(areaName, key, value) {
     return new Promise((resolve) => {
-      try {
-        // Check if chrome.storage is still accessible
-        if (!chrome || !chrome.storage || !chrome.storage.sync || !chrome.runtime) {
-          debugLog('[Memory Jogger] Context invalidated during storageSet:', key);
-          resolve();
+      const area = getStorageArea(areaName);
+      if (!area) {
+        resolve({ ok: false, error: 'Storage API unavailable' });
+        return;
+      }
+      const startTime = performance.now();
+      area.set({ [key]: value }, () => {
+        const endTime = performance.now();
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: chrome.runtime.lastError.message, durationMs: endTime - startTime });
           return;
         }
-        
-        const startTime = performance.now();
-        chrome.storage.sync.set({ [key]: value }, () => {
-          try {
-            const endTime = performance.now();
-            if (chrome.runtime.lastError) {
-              // Silent fail - context may be invalidated
-              debugLog(`[Memory Jogger] storageSet error (${(endTime - startTime).toFixed(2)}ms):`, key, chrome.runtime.lastError.message);
-            } else {
-              debugLog(`[Memory Jogger] storageSet success (${(endTime - startTime).toFixed(2)}ms):`, key, `"${value.substring(0, 50)}..."`);
-              
-              // If this is a note, also save metadata; read first to preserve stored fields (e.g. connected date)
-              if (key.startsWith('note:') && value.trim()) {
-                const displayName = getLinkedInDisplayName();
-                const metaKey = key.replace('note:', 'meta:');
-                chrome.storage.sync.get([metaKey], (existing) => {
-                  if (chrome.runtime.lastError) return;
-                  let meta = {};
-                  if (existing[metaKey]) { try { meta = JSON.parse(existing[metaKey]); } catch(e) {} }
-                  if (displayName) meta.name = displayName;
-                  chrome.storage.sync.set({ [metaKey]: JSON.stringify(meta) }, () => {
-                    if (!chrome.runtime.lastError) {
-                      debugLog(`[Memory Jogger] Saved metadata for:`, key);
-                    }
-                  });
-                });
-              }
-            }
-          } catch (e) {
-            // Context invalidated in callback - silent fail
-            debugLog('[Memory Jogger] storageSet callback error:', key, e.message);
-          }
-          resolve();
-        });
-      } catch (e) {
-        // Context invalidated - silent fail
-        debugLog('[Memory Jogger] storageSet outer error:', key, e.message);
-        resolve();
-      }
+        resolve({ ok: true, durationMs: endTime - startTime });
+      });
     });
+  }
+
+  async function storageGet(key) {
+    try {
+      const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
+      const primary = await readStorageArea(preferredArea, key);
+      if (primary.ok) {
+        debugLog(`[Memory Jogger] storageGet ${preferredArea} success (${primary.durationMs.toFixed(2)}ms):`, key);
+        return primary.value || "";
+      }
+
+      if (preferredArea === 'sync') {
+        storageAreaPreference = 'local';
+        debugLog('[Memory Jogger] Sync unavailable, switching to local storage:', primary.error || 'unknown error');
+        const fallback = await readStorageArea('local', key);
+        if (fallback.ok) {
+          debugLog(`[Memory Jogger] storageGet local fallback success (${fallback.durationMs.toFixed(2)}ms):`, key);
+          return fallback.value || "";
+        }
+      }
+
+      debugLog('[Memory Jogger] storageGet failed:', key, primary.error || 'unknown error');
+      return "";
+    } catch (e) {
+      debugLog('[Memory Jogger] storageGet outer error:', key, e.message);
+      return "";
+    }
+  }
+
+  async function storageSet(key, value) {
+    try {
+      const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
+      let writeResult = await writeStorageArea(preferredArea, key, value);
+
+      if (!writeResult.ok && preferredArea === 'sync') {
+        storageAreaPreference = 'local';
+        debugLog('[Memory Jogger] Sync write failed, switching to local storage:', key, writeResult.error || 'unknown error');
+        writeResult = await writeStorageArea('local', key, value);
+      }
+
+      if (writeResult.ok) {
+        debugLog(`[Memory Jogger] storageSet ${storageAreaPreference === 'local' ? 'local' : preferredArea} success (${writeResult.durationMs.toFixed(2)}ms):`, key);
+      } else {
+        debugLog('[Memory Jogger] storageSet failed:', key, writeResult.error || 'unknown error');
+      }
+
+      // If this is a note, also save metadata; read first to preserve stored fields (e.g. connected date)
+      if (key.startsWith('note:') && value.trim()) {
+        const displayName = getLinkedInDisplayName();
+        const metaKey = key.replace('note:', 'meta:');
+        const existingMetaRaw = await storageGet(metaKey);
+        let meta = {};
+        if (existingMetaRaw) { try { meta = JSON.parse(existingMetaRaw); } catch (e) {} }
+        if (displayName) meta.name = displayName;
+        await storageSet(metaKey, JSON.stringify(meta));
+        debugLog('[Memory Jogger] Saved metadata for:', key);
+      }
+    } catch (e) {
+      debugLog('[Memory Jogger] storageSet outer error:', key, e.message);
+    }
   }
 
   function removeExistingPanel() {
@@ -391,17 +412,14 @@
           const detectedCon = getLinkedInConnectedDate();
           if (name || detectedCon) {
             const metaKey = `meta:${profileKey}`;
-            chrome.storage.sync.get([metaKey], (result) => {
-              if (chrome.runtime && chrome.runtime.lastError) return;
+            storageGet(metaKey).then((existingMetaRaw) => {
               let meta = {};
-              if (result[metaKey]) { try { meta = JSON.parse(result[metaKey]); } catch(e) {} }
+              if (existingMetaRaw) { try { meta = JSON.parse(existingMetaRaw); } catch (e) {} }
               if (name) meta.name = name;
               // Only auto-fill con if not already set (don't overwrite user-entered dates)
               if (detectedCon && !meta.con) meta.con = detectedCon;
-              chrome.storage.sync.set({ [metaKey]: JSON.stringify(meta) }, () => {
-                if (chrome.runtime && !chrome.runtime.lastError) {
-                  debugLog('[Memory Jogger] Refreshed metadata on mount:', meta.name, meta.con || '');
-                }
+              storageSet(metaKey, JSON.stringify(meta)).then(() => {
+                debugLog('[Memory Jogger] Refreshed metadata on mount:', meta.name, meta.con || '');
               });
             });
           }
@@ -552,11 +570,7 @@
         } else {
           delete meta.con;
         }
-        await new Promise((resolve) => {
-          try {
-            chrome.storage.sync.set({ [metaKey]: JSON.stringify(meta) }, () => resolve());
-          } catch(e) { resolve(); }
-        });
+        await storageSet(metaKey, JSON.stringify(meta));
         renderNoteContent(storageKey);
         updateAllProfileImageIndicators();
       });
