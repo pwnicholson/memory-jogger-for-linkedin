@@ -2,7 +2,7 @@
 
 A minimal Chrome Extension (Manifest V3) that adds a private **"How I know them"** note panel to LinkedIn profile pages.
 
-Current release: **v0.3.2**
+Current release: **v0.32**
 
 ## What it does
 
@@ -37,4 +37,4 @@ Current release: **v0.3.2**
 
 ## Changelog
 
-- See `CHANGELOG.md` for release history and v0.3.2 notes.
+- See `CHANGELOG.md` for release history and v0.32 notes.

@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## 0.3.2 - 2026-05-07
+## 0.32 - 2026-05-07
 
 - Added compact sync storage format (`mjli:bucket:v2:*`) to reduce top-level item usage and avoid `chrome.storage.sync.MAX_ITEMS` limits.
 - Added automatic legacy migration from `note:/...` and `meta:/...` keys to compact bucketed records.
