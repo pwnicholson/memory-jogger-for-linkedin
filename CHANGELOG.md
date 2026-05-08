@@ -2,10 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
-## 0.31 - 2026-05-07
+## 0.3.2 - 2026-05-07
 
-- Quick fix: resolved a storage error that could prevent notes from saving on some machines when Chrome Sync was unavailable.
-- Added local storage fallback so note save/read continues to work when sync storage is inaccessible.
+- Added compact sync storage format (`mjli:bucket:v2:*`) to reduce top-level item usage and avoid `chrome.storage.sync.MAX_ITEMS` limits.
+- Added automatic legacy migration from `note:/...` and `meta:/...` keys to compact bucketed records.
+- Improved startup storage routing logic with persisted sync/local preference and quota-aware fallback behavior.
+- Added clearer diagnostics for sync quota/item-limit status and active storage mode.
+- Added update visibility in popup (version, sync format, storage mode) so users can confirm migration state without opening the dashboard.
+- Added update/install migration guidance flow, including auto-open dashboard logic when outdated sync data is detected.
 
 ## 0.3 - 2026-05-04
 

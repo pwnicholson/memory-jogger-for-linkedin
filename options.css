@@ -77,6 +77,23 @@
   outline: 2px solid #0a66c2;
   outline-offset: 2px;
 }
+
+.mjli-migration-banner {
+  margin: 16px 40px 0;
+  padding: 12px 14px;
+  border: 1px solid #b9d9ff;
+  border-radius: 8px;
+  background: #e8f3ff;
+}
+
+.mjli-migration-banner-text {
+  margin: 0;
+  color: #04437a;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
 .mjli-options-toolbar {
   display: flex;
   justify-content: space-between;

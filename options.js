@@ -24,12 +24,52 @@
   let activeTab = 'people'; // 'people' | 'companies'
   let dateFormatPreference = 'yyyy-mm-dd'; // 'yyyy-mm-dd' | 'mm-dd-yyyy' | 'dd-mm-yyyy'
   let storageAreaPreference = 'sync';
+  let storageAreaPreferenceReady = false;
+  let storageAreaPreferenceLoadPromise = null;
+  let storageAreaRoutingReadyPromise = null;
 
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
   const DATE_FORMAT_KEY = 'mjliDateFormatPreference';
+  const STORAGE_AREA_PREFERENCE_KEY = 'mjliStorageAreaPreference';
+  const MIGRATION_PROMPT_KEY = 'mjliNeedsMigrationPrompt';
+  const MIGRATION_NOTICE_KEY = 'mjliShowMigrationNotice';
+  const SYNC_BUCKET_PREFIX = 'mjli:bucket:v2:';
+  const SYNC_BUCKET_COUNT = 96;
+  const SYNC_QUOTA_BYTES = (chrome && chrome.storage && chrome.storage.sync && chrome.storage.sync.QUOTA_BYTES) || 102400;
+  const SYNC_MAX_ITEMS = (chrome && chrome.storage && chrome.storage.sync && chrome.storage.sync.MAX_ITEMS) || 512;
+  let syncBucketsReadyPromise = null;
 
   let currentEditingKey = null;
   let allNotesData = {}; // Cache for filtering
+
+  function acknowledgeMigrationPrompt() {
+    try {
+      chrome.storage.local.set({ [MIGRATION_PROMPT_KEY]: false });
+      chrome.action.setBadgeText({ text: '' });
+    } catch (e) {
+      // Silent
+    }
+  }
+
+  function showMigrationBannerIfNeeded() {
+    try {
+      chrome.storage.local.get([MIGRATION_NOTICE_KEY], (result) => {
+        if (chrome.runtime.lastError) return;
+        const banner = document.getElementById('mjli-migration-banner');
+        if (!banner) return;
+        const shouldShow = !!result[MIGRATION_NOTICE_KEY];
+        banner.hidden = !shouldShow;
+        if (shouldShow) {
+          chrome.storage.local.set({ [MIGRATION_NOTICE_KEY]: false });
+        }
+      });
+    } catch (e) {
+      // Silent
+    }
+  }
+
+  acknowledgeMigrationPrompt();
+  showMigrationBannerIfNeeded();
 
   function getStorageArea(areaName) {
     try {
@@ -91,13 +131,334 @@
     });
   }
 
+  function isCompactableEntityKey(key) {
+    return typeof key === 'string' && (key.startsWith('note:/') || key.startsWith('meta:/'));
+  }
+
+  function getEntityKeyFromStorageKey(key) {
+    if (!isCompactableEntityKey(key)) return null;
+    return key.replace(/^note:/, '').replace(/^meta:/, '');
+  }
+
+  function getBucketFieldFromStorageKey(key) {
+    if (key.startsWith('note:/')) return 'n';
+    if (key.startsWith('meta:/')) return 'm';
+    return null;
+  }
+
+  function hashString(input) {
+    let hash = 0;
+    for (let i = 0; i < input.length; i += 1) {
+      hash = ((hash << 5) - hash) + input.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  }
+
+  function getSyncBucketKeyForEntity(entityKey) {
+    const index = hashString(entityKey) % SYNC_BUCKET_COUNT;
+    return `${SYNC_BUCKET_PREFIX}${String(index).padStart(2, '0')}`;
+  }
+
+  function parseBucketRecord(rawRecord) {
+    const parsed = {};
+    if (!rawRecord || typeof rawRecord !== 'object') return parsed;
+    if (typeof rawRecord.n === 'string') parsed.n = rawRecord.n;
+    if (rawRecord.m && typeof rawRecord.m === 'object') parsed.m = rawRecord.m;
+    return parsed;
+  }
+
+  function expandSyncData(rawData) {
+    const expanded = {};
+    const data = rawData || {};
+
+    Object.keys(data).forEach((key) => {
+      if (!key.startsWith(SYNC_BUCKET_PREFIX)) {
+        expanded[key] = data[key];
+      }
+    });
+
+    Object.keys(data).forEach((key) => {
+      if (!key.startsWith(SYNC_BUCKET_PREFIX)) return;
+      const bucket = data[key];
+      if (!bucket || typeof bucket !== 'object') return;
+      Object.keys(bucket).forEach((entityKey) => {
+        const record = parseBucketRecord(bucket[entityKey]);
+        if (Object.prototype.hasOwnProperty.call(record, 'n')) {
+          expanded[`note:${entityKey}`] = record.n || '';
+        }
+        if (Object.prototype.hasOwnProperty.call(record, 'm')) {
+          expanded[`meta:${entityKey}`] = JSON.stringify(record.m || {});
+        }
+      });
+    });
+
+    return expanded;
+  }
+
+  function migrateLegacySyncDataToBuckets() {
+    return new Promise((resolve) => {
+      const area = getStorageArea('sync');
+      if (!area) {
+        resolve(false);
+        return;
+      }
+
+      area.get(null, (result) => {
+        if (chrome.runtime.lastError) {
+          resolve(false);
+          return;
+        }
+
+        const allData = result || {};
+        const keys = Object.keys(allData);
+        const legacyKeys = keys.filter((key) => key.startsWith('note:/') || key.startsWith('meta:/'));
+        if (legacyKeys.length === 0) {
+          resolve(false);
+          return;
+        }
+
+        const entityRecords = {};
+
+        keys.filter((key) => key.startsWith(SYNC_BUCKET_PREFIX)).forEach((bucketKey) => {
+          const bucket = allData[bucketKey];
+          if (!bucket || typeof bucket !== 'object') return;
+          Object.keys(bucket).forEach((entityKey) => {
+            entityRecords[entityKey] = parseBucketRecord(bucket[entityKey]);
+          });
+        });
+
+        legacyKeys.forEach((key) => {
+          const entityKey = getEntityKeyFromStorageKey(key);
+          if (!entityKey) return;
+          const field = getBucketFieldFromStorageKey(key);
+          const current = entityRecords[entityKey] || {};
+
+          if (field === 'n') {
+            current.n = typeof allData[key] === 'string' ? allData[key] : String(allData[key] || '');
+          } else if (field === 'm') {
+            try {
+              current.m = allData[key] ? JSON.parse(allData[key]) : {};
+            } catch (e) {
+              current.m = {};
+            }
+          }
+
+          entityRecords[entityKey] = current;
+        });
+
+        const bucketWrites = {};
+        Object.keys(entityRecords).forEach((entityKey) => {
+          const bucketKey = getSyncBucketKeyForEntity(entityKey);
+          if (!bucketWrites[bucketKey]) bucketWrites[bucketKey] = {};
+          bucketWrites[bucketKey][entityKey] = entityRecords[entityKey];
+        });
+
+        area.remove(legacyKeys, () => {
+          if (chrome.runtime.lastError) {
+            resolve(false);
+            return;
+          }
+
+          area.set(bucketWrites, () => {
+            if (chrome.runtime.lastError) {
+              resolve(false);
+              return;
+            }
+            console.log('[Memory Jogger] Migrated sync note/meta keys into compact buckets:', {
+              legacyKeys: legacyKeys.length,
+              bucketCount: Object.keys(bucketWrites).length
+            });
+            resolve(true);
+          });
+        });
+      });
+    });
+  }
+
+  function ensureSyncBucketsReady() {
+    if (!syncBucketsReadyPromise) {
+      syncBucketsReadyPromise = migrateLegacySyncDataToBuckets().catch(() => false);
+    }
+    return syncBucketsReadyPromise;
+  }
+
+  async function readSyncBucketedValue(key) {
+    await ensureSyncBucketsReady();
+    const entityKey = getEntityKeyFromStorageKey(key);
+    const bucketField = getBucketFieldFromStorageKey(key);
+    if (!entityKey || !bucketField) return '';
+
+    const bucketKey = getSyncBucketKeyForEntity(entityKey);
+    const result = await storageAreaGet('sync', [bucketKey, key]);
+    if (!result.ok) return '';
+
+    const bucket = result.data[bucketKey] && typeof result.data[bucketKey] === 'object' ? result.data[bucketKey] : null;
+    const record = bucket && bucket[entityKey] ? parseBucketRecord(bucket[entityKey]) : null;
+    if (record && Object.prototype.hasOwnProperty.call(record, bucketField)) {
+      return bucketField === 'm' ? JSON.stringify(record.m || {}) : (record.n || '');
+    }
+
+    return result.data[key] || '';
+  }
+
+  async function writeSyncBucketedValue(key, value) {
+    await ensureSyncBucketsReady();
+    const entityKey = getEntityKeyFromStorageKey(key);
+    const bucketField = getBucketFieldFromStorageKey(key);
+    if (!entityKey || !bucketField) return { ok: false, error: 'Unsupported key' };
+
+    const bucketKey = getSyncBucketKeyForEntity(entityKey);
+    const readResult = await storageAreaGet('sync', [bucketKey]);
+    if (!readResult.ok) return { ok: false, error: readResult.error || 'read failed' };
+
+    const bucket = readResult.data[bucketKey] && typeof readResult.data[bucketKey] === 'object'
+      ? { ...readResult.data[bucketKey] }
+      : {};
+    const record = parseBucketRecord(bucket[entityKey]);
+
+    if (bucketField === 'n') {
+      record.n = typeof value === 'string' ? value : String(value || '');
+    } else {
+      try {
+        record.m = value ? JSON.parse(value) : {};
+      } catch (e) {
+        record.m = {};
+      }
+    }
+
+    bucket[entityKey] = record;
+    const setResult = await storageAreaSet('sync', { [bucketKey]: bucket });
+    if (!setResult.ok) return setResult;
+    await storageAreaRemove('sync', [key]);
+    return setResult;
+  }
+
+  async function removeSyncBucketedValue(key) {
+    await ensureSyncBucketsReady();
+    const entityKey = getEntityKeyFromStorageKey(key);
+    const bucketField = getBucketFieldFromStorageKey(key);
+    if (!entityKey || !bucketField) return storageAreaRemove('sync', [key]);
+
+    const bucketKey = getSyncBucketKeyForEntity(entityKey);
+    const readResult = await storageAreaGet('sync', [bucketKey]);
+    if (!readResult.ok) return readResult;
+
+    const bucket = readResult.data[bucketKey] && typeof readResult.data[bucketKey] === 'object'
+      ? { ...readResult.data[bucketKey] }
+      : null;
+    if (!bucket || !bucket[entityKey]) {
+      return storageAreaRemove('sync', [key]);
+    }
+
+    const record = parseBucketRecord(bucket[entityKey]);
+    delete record[bucketField];
+    if (!Object.keys(record).length) {
+      delete bucket[entityKey];
+    } else {
+      bucket[entityKey] = record;
+    }
+
+    if (!Object.keys(bucket).length) {
+      return storageAreaRemove('sync', [bucketKey, key]);
+    }
+
+    const setResult = await storageAreaSet('sync', { [bucketKey]: bucket });
+    if (!setResult.ok) return setResult;
+    await storageAreaRemove('sync', [key]);
+    return setResult;
+  }
+
+  function isSyncQuotaError(errorMessage) {
+    if (!errorMessage) return false;
+    return /quota|kMaxItems|MAX_ITEMS|QUOTA_BYTES/i.test(errorMessage);
+  }
+
+  function persistStorageAreaPreference(areaName) {
+    storageAreaPreference = areaName === 'local' ? 'local' : 'sync';
+    try {
+      chrome.storage.local.set({ [STORAGE_AREA_PREFERENCE_KEY]: storageAreaPreference });
+    } catch (e) {
+      // Silent - storage routing should degrade gracefully
+    }
+  }
+
+  function loadStorageAreaPreference() {
+    if (storageAreaPreferenceLoadPromise) return storageAreaPreferenceLoadPromise;
+    storageAreaPreferenceLoadPromise = new Promise((resolve) => {
+      try {
+        chrome.storage.local.get([STORAGE_AREA_PREFERENCE_KEY], (result) => {
+          if (!chrome.runtime.lastError && result[STORAGE_AREA_PREFERENCE_KEY] === 'local') {
+            storageAreaPreference = 'local';
+          }
+          storageAreaPreferenceReady = true;
+          resolve(storageAreaPreference);
+        });
+      } catch (e) {
+        storageAreaPreferenceReady = true;
+        resolve(storageAreaPreference);
+      }
+    });
+    return storageAreaPreferenceLoadPromise;
+  }
+
+  async function ensureStorageAreaPreferenceReady() {
+    if (storageAreaPreferenceReady && storageAreaRoutingReadyPromise) {
+      await storageAreaRoutingReadyPromise;
+      return;
+    }
+    await ensureStorageRoutingReady();
+  }
+
+  function maybeForceLocalStorageFromSyncUsage() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.sync.get(null, (result) => {
+          if (chrome.runtime.lastError || storageAreaPreference === 'local') {
+            resolve();
+            return;
+          }
+          const allData = result || {};
+          const totalItems = Object.keys(allData).length;
+          const bytesUsed = JSON.stringify(allData).length;
+          if (totalItems >= SYNC_MAX_ITEMS || bytesUsed >= SYNC_QUOTA_BYTES) {
+            persistStorageAreaPreference('local');
+            console.log('[Memory Jogger] Sync storage is full, using local storage for dashboard reads/writes:', {
+              totalItems,
+              bytesUsed,
+              maxItems: SYNC_MAX_ITEMS,
+              quotaBytes: SYNC_QUOTA_BYTES
+            });
+          }
+          resolve();
+        });
+      } catch (e) {
+        resolve();
+      }
+    });
+  }
+
+  function ensureStorageRoutingReady() {
+    if (!storageAreaRoutingReadyPromise) {
+      storageAreaRoutingReadyPromise = loadStorageAreaPreference().then(() => maybeForceLocalStorageFromSyncUsage());
+    }
+    return storageAreaRoutingReadyPromise;
+  }
+
   // --- Storage Helpers ---
   async function storageGet(key) {
     try {
+      await ensureStorageAreaPreferenceReady();
       const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
-      let result = await storageAreaGet(preferredArea, [key]);
+      let result;
+      if (preferredArea === 'sync' && isCompactableEntityKey(key)) {
+        const value = await readSyncBucketedValue(key);
+        result = { ok: true, data: { [key]: value } };
+      } else {
+        result = await storageAreaGet(preferredArea, [key]);
+      }
       if (!result.ok && preferredArea === 'sync') {
-        storageAreaPreference = 'local';
+        persistStorageAreaPreference('local');
         console.log('[Memory Jogger] Sync unavailable, switching options storage to local:', result.error || 'unknown error');
         result = await storageAreaGet('local', [key]);
       }
@@ -109,10 +470,18 @@
 
   async function storageSet(key, value) {
     try {
+      await ensureStorageAreaPreferenceReady();
       const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
-      let result = await storageAreaSet(preferredArea, { [key]: value });
+      let result;
+      if (preferredArea === 'sync' && isCompactableEntityKey(key)) {
+        result = await writeSyncBucketedValue(key, value);
+      } else {
+        result = await storageAreaSet(preferredArea, { [key]: value });
+      }
       if (!result.ok && preferredArea === 'sync') {
-        storageAreaPreference = 'local';
+        if (isSyncQuotaError(result.error)) {
+          persistStorageAreaPreference('local');
+        }
         console.log('[Memory Jogger] Sync unavailable, switching options storage to local:', result.error || 'unknown error');
         result = await storageAreaSet('local', { [key]: value });
       }
@@ -126,10 +495,15 @@
 
   async function storageGetAll() {
     try {
+      await ensureStorageAreaPreferenceReady();
       const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
       let result = await storageAreaGet(preferredArea, null);
+      if (result.ok && preferredArea === 'sync') {
+        await ensureSyncBucketsReady();
+        return expandSyncData(result.data || {});
+      }
       if (!result.ok && preferredArea === 'sync') {
-        storageAreaPreference = 'local';
+        persistStorageAreaPreference('local');
         console.log('[Memory Jogger] Sync unavailable, switching options storage to local:', result.error || 'unknown error');
         result = await storageAreaGet('local', null);
       }
@@ -141,10 +515,18 @@
 
   async function storageRemove(key) {
     try {
+      await ensureStorageAreaPreferenceReady();
       const preferredArea = storageAreaPreference === 'local' ? 'local' : 'sync';
-      let result = await storageAreaRemove(preferredArea, [key]);
+      let result;
+      if (preferredArea === 'sync' && isCompactableEntityKey(key)) {
+        result = await removeSyncBucketedValue(key);
+      } else {
+        result = await storageAreaRemove(preferredArea, [key]);
+      }
       if (!result.ok && preferredArea === 'sync') {
-        storageAreaPreference = 'local';
+        if (isSyncQuotaError(result.error)) {
+          persistStorageAreaPreference('local');
+        }
         console.log('[Memory Jogger] Sync unavailable, switching options storage to local:', result.error || 'unknown error');
         result = await storageAreaRemove('local', [key]);
       }
@@ -202,6 +584,8 @@
     devLoggingToggle.checked = !!isEnabled;
     updateDevLoggingToggleStyle(isEnabled);
   }
+
+  ensureStorageRoutingReady();
 
   // --- Utility Functions ---
   function escapeHtml(text) {

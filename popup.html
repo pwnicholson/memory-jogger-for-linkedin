@@ -38,10 +38,60 @@
       button:hover {
         background: #004182;
       }
+      .status-card {
+        margin: 0 0 12px;
+        padding: 10px 12px;
+        border: 1px solid #d8e4f0;
+        border-radius: 10px;
+        background: #f7fbff;
+      }
+      .status-title {
+        margin: 0 0 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #0a66c2;
+      }
+      .status-line {
+        margin: 0 0 4px;
+        font-size: 12px;
+        color: #34495e;
+        line-height: 1.35;
+      }
+      .status-line:last-child {
+        margin-bottom: 0;
+      }
+      .status-value {
+        font-weight: 600;
+        color: #102a43;
+      }
+      .update-notice {
+        display: none;
+        margin: 0 0 10px;
+        padding: 8px 10px;
+        background: #e8f3ff;
+        border: 1px solid #b9d9ff;
+        border-radius: 8px;
+        color: #04437a;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      .update-notice.visible {
+        display: block;
+      }
     </style>
   </head>
   <body>
     <h1>Memory Jogger for LinkedIn</h1>
-    <p>Open a LinkedIn profile to add or update your private “How I know them” note.</p>    <button id="open-dashboard">View All Notes Dashboard</button>
+    <p>Open a LinkedIn profile to add or update your private “How I know them” note.</p>
+    <div class="status-card">
+      <div class="status-title">Extension Status</div>
+      <p class="status-line">Version: <span id="status-version" class="status-value">Checking...</span></p>
+      <p class="status-line">Sync format: <span id="status-sync-format" class="status-value">Checking...</span></p>
+      <p class="status-line">Storage mode: <span id="status-storage-mode" class="status-value">Checking...</span></p>
+    </div>
+    <div id="update-notice" class="update-notice">
+      Extension updated. Open the dashboard once to confirm sync migration.
+    </div>
+    <button id="open-dashboard">View All Notes Dashboard</button>
     <script src="popup.js"></script>  </body>
 </html>

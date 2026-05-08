@@ -30,9 +30,16 @@ function formatBytes(bytes) {
 async function checkStorageStatus() {
   try {
     const result = await chrome.storage.sync.get(null);
-    const noteCount = Object.keys(result).filter(k => k.startsWith('note:')).length;
     const totalItems = Object.keys(result).length;
     const byteUsage = JSON.stringify(result).length;
+    const syncStatus = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'checkSyncStatus' }, (response) => {
+        resolve(chrome.runtime.lastError ? null : (response || null));
+      });
+    });
+    const noteCount = syncStatus && typeof syncStatus.noteCount === 'number'
+      ? syncStatus.noteCount
+      : Object.keys(result).filter(k => k.startsWith('note:')).length;
     
     const status = {
       timestamp: new Date().toISOString(),
@@ -41,7 +48,11 @@ async function checkStorageStatus() {
       bytesUsed: byteUsage,
       quotaBytes: 102400,
       percentUsed: Math.round((byteUsage / 102400) * 100),
-      storageAvailable: byteUsage < 102400
+      storageAvailable: byteUsage < 102400,
+      syncItemsUsed: syncStatus && typeof syncStatus.syncItemsUsed === 'number' ? syncStatus.syncItemsUsed : totalItems,
+      syncItemLimit: syncStatus && typeof syncStatus.syncMaxItems === 'number' ? syncStatus.syncMaxItems : 512,
+      syncQuotaReached: !!(syncStatus && syncStatus.syncQuotaReached),
+      activeStorageArea: syncStatus && syncStatus.storageArea ? syncStatus.storageArea : 'sync'
     };
     
     let output = JSON.stringify(status, null, 2);
@@ -213,10 +224,12 @@ async function testSyncVsLocal() {
   try {
     const testKey = `comparison:${Date.now()}`;
     const testValue = `Test at ${new Date().toISOString()}`;
+    let syncWriteError = null;
     
     // Write to both
     const syncWrite = await new Promise((resolve) => {
       chrome.storage.sync.set({ [testKey]: testValue }, () => {
+        syncWriteError = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
         resolve(chrome.runtime.lastError ? false : true);
       });
     });
@@ -230,6 +243,12 @@ async function testSyncVsLocal() {
     // Read back
     const syncRead = await chrome.storage.sync.get([testKey]);
     const localRead = await chrome.storage.local.get([testKey]);
+
+    const syncStatus = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'checkSyncStatus' }, (response) => {
+        resolve(chrome.runtime.lastError ? null : (response || null));
+      });
+    });
     
     // Cleanup - use proper API calls
     await new Promise((resolve) => {
@@ -244,6 +263,7 @@ Sync Storage:
   Write success: ${syncWrite}
   Read success: ${!!syncRead[testKey]}
   Value: "${syncRead[testKey]}"
+  Error: ${syncWriteError || 'none'}
 
 Local Storage:
   Write success: ${localWrite}
@@ -251,8 +271,10 @@ Local Storage:
   Value: "${localRead[testKey]}"
 
 Conclusion:
-  Storage API working: ${syncWrite && localWrite ? '✅' : '❌'}
-  Problem is likely with Google Sync service, not Chrome APIs
+  Storage API working: ${localWrite ? '✅' : '❌'}
+  ${!syncWrite && /kMaxItems|quota/i.test(syncWriteError || '')
+      ? `Sync storage is full (${syncStatus && typeof syncStatus.syncItemsUsed === 'number' ? `${syncStatus.syncItemsUsed}/${syncStatus.syncMaxItems} items` : 'item quota reached'}), so new notes are being routed to local storage.`
+      : (!syncWrite ? 'Sync write failed for a reason other than quota; inspect the error above.' : 'Both storage areas accepted the test write.')}
     `;
     
     document.getElementById('api-test').textContent = output;
