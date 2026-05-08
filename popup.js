@@ -24,6 +24,8 @@ async function updateStatusPanel() {
     const bucketKeys = keys.filter((key) => key.startsWith(SYNC_BUCKET_PREFIX));
     const hasBucketData = bucketKeys.length > 0;
 
+    const isLocalMode = localState[STORAGE_AREA_PREFERENCE_KEY] === 'local';
+
     let syncFormat = 'No synced notes yet';
     if (hasLegacyKeys) {
       syncFormat = hasBucketData ? 'Migration in progress or mixed data' : 'Legacy format still present';
@@ -35,9 +37,15 @@ async function updateStatusPanel() {
       syncFormat = 'Compacted current format';
     }
 
-    const storageMode = localState[STORAGE_AREA_PREFERENCE_KEY] === 'local'
+    const storageMode = isLocalMode
       ? 'Local fallback active'
       : 'Sync preferred';
+
+    if (isLocalMode) {
+      syncFormat = hasLegacyKeys
+        ? 'Local mode active (legacy sync data retained)'
+        : 'Local mode active';
+    }
 
     setText('status-sync-format', syncFormat);
     setText('status-storage-mode', storageMode);
@@ -63,12 +71,16 @@ document.getElementById('open-dashboard').addEventListener('click', () => {
 });
 
 try {
-  chrome.storage.local.get([MIGRATION_PROMPT_KEY], (result) => {
+  chrome.storage.local.get([MIGRATION_PROMPT_KEY, STORAGE_AREA_PREFERENCE_KEY], (result) => {
     if (chrome.runtime.lastError) return;
-    const shouldShowUpdatePrompt = !!result[MIGRATION_PROMPT_KEY];
+    const isLocalMode = result[STORAGE_AREA_PREFERENCE_KEY] === 'local';
+    const shouldShowUpdatePrompt = !isLocalMode && !!result[MIGRATION_PROMPT_KEY];
     const notice = document.getElementById('update-notice');
     if (notice) {
       notice.classList.toggle('visible', shouldShowUpdatePrompt);
+    }
+    if (isLocalMode && result[MIGRATION_PROMPT_KEY]) {
+      clearMigrationPrompt();
     }
   });
 } catch (e) {

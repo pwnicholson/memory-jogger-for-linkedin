@@ -53,13 +53,14 @@
 
   function showMigrationBannerIfNeeded() {
     try {
-      chrome.storage.local.get([MIGRATION_NOTICE_KEY], (result) => {
+      chrome.storage.local.get([MIGRATION_NOTICE_KEY, STORAGE_AREA_PREFERENCE_KEY], (result) => {
         if (chrome.runtime.lastError) return;
         const banner = document.getElementById('mjli-migration-banner');
         if (!banner) return;
-        const shouldShow = !!result[MIGRATION_NOTICE_KEY];
+        const isLocalMode = result[STORAGE_AREA_PREFERENCE_KEY] === 'local';
+        const shouldShow = !isLocalMode && !!result[MIGRATION_NOTICE_KEY];
         banner.hidden = !shouldShow;
-        if (shouldShow) {
+        if (shouldShow || (isLocalMode && result[MIGRATION_NOTICE_KEY])) {
           chrome.storage.local.set({ [MIGRATION_NOTICE_KEY]: false });
         }
       });
@@ -218,6 +219,11 @@
           return;
         }
 
+        const legacyPayload = {};
+        legacyKeys.forEach((key) => {
+          legacyPayload[key] = allData[key];
+        });
+
         const entityRecords = {};
 
         keys.filter((key) => key.startsWith(SYNC_BUCKET_PREFIX)).forEach((bucketKey) => {
@@ -262,7 +268,11 @@
 
           area.set(bucketWrites, () => {
             if (chrome.runtime.lastError) {
-              resolve(false);
+              const migrationError = chrome.runtime.lastError.message || 'unknown error';
+              area.set(legacyPayload, () => {
+                console.log('[Memory Jogger] Sync migration failed, restored legacy keys:', migrationError);
+                resolve(false);
+              });
               return;
             }
             console.log('[Memory Jogger] Migrated sync note/meta keys into compact buckets:', {
@@ -440,7 +450,9 @@
 
   function ensureStorageRoutingReady() {
     if (!storageAreaRoutingReadyPromise) {
-      storageAreaRoutingReadyPromise = loadStorageAreaPreference().then(() => maybeForceLocalStorageFromSyncUsage());
+      storageAreaRoutingReadyPromise = loadStorageAreaPreference()
+        .then(() => migrateLegacySyncDataToBuckets().catch(() => false))
+        .then(() => maybeForceLocalStorageFromSyncUsage());
     }
     return storageAreaRoutingReadyPromise;
   }

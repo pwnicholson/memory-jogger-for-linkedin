@@ -134,6 +134,18 @@ function updateMigrationBadge(isEnabled) {
 
 function maybeAutoOpenMigrationDashboard(trigger) {
   return new Promise((resolve) => {
+    if (storageAreaPreference === 'local') {
+      chrome.storage.local.set({
+        [MIGRATION_PROMPT_KEY]: false,
+        [MIGRATION_TARGET_KEY]: MIGRATION_TARGET_VERSION,
+        [MIGRATION_NOTICE_KEY]: false,
+        [MIGRATION_AUTOOPENED_KEY]: ''
+      });
+      updateMigrationBadge(false);
+      resolve(false);
+      return;
+    }
+
     chrome.storage.local.get([
       MIGRATION_PROMPT_KEY,
       MIGRATION_TARGET_KEY,
@@ -190,6 +202,18 @@ function maybeAutoOpenMigrationDashboard(trigger) {
 chrome.runtime.onInstalled.addListener((details) => {
   if (!details || details.reason !== 'update') return;
 
+  if (storageAreaPreference === 'local') {
+    chrome.storage.local.set({
+      [MIGRATION_PROMPT_KEY]: false,
+      [MIGRATION_TARGET_KEY]: MIGRATION_TARGET_VERSION,
+      [MIGRATION_NOTICE_KEY]: false,
+      [MIGRATION_AUTOOPENED_KEY]: ''
+    });
+    updateMigrationBadge(false);
+    addLog(`Extension updated from ${details.previousVersion || 'unknown'}; local mode active, migration prompt skipped`);
+    return;
+  }
+
   chrome.storage.local.set({
     [MIGRATION_PROMPT_KEY]: true,
     [MIGRATION_TARGET_KEY]: MIGRATION_TARGET_VERSION,
@@ -242,7 +266,6 @@ function extractNotesFromData(data) {
 // Check Chrome sync status on startup
 addLog(`Service worker initializing... build=${BUILD_ID}`);
 loadStorageAreaPreference()
-  .then(() => maybeAutoOpenMigrationDashboard('startup'))
   .then(() => inspectSyncCapacity())
   .then((capacity) => {
     if (capacity.quotaReached && storageAreaPreference !== 'local') {
@@ -250,6 +273,7 @@ loadStorageAreaPreference()
       addLog(`Sync quota reached, preferring local storage (items=${capacity.totalItems}, bytes=${capacity.bytesUsed})`, 'warn');
     }
   })
+  .then(() => maybeAutoOpenMigrationDashboard('startup'))
   .catch(() => {})
   .then(() => getAllNotesData())
   .then((result) => {

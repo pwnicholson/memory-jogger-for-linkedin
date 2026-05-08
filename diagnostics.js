@@ -29,40 +29,60 @@ function formatBytes(bytes) {
 
 async function checkStorageStatus() {
   try {
-    const result = await chrome.storage.sync.get(null);
-    const totalItems = Object.keys(result).length;
-    const byteUsage = JSON.stringify(result).length;
+    const [syncData, localData] = await Promise.all([
+      chrome.storage.sync.get(null),
+      chrome.storage.local.get(null)
+    ]);
+
+    const syncItems = Object.keys(syncData || {}).length;
+    const syncBytesUsed = JSON.stringify(syncData || {}).length;
+
     const syncStatus = await new Promise((resolve) => {
       chrome.runtime.sendMessage({ action: 'checkSyncStatus' }, (response) => {
         resolve(chrome.runtime.lastError ? null : (response || null));
       });
     });
+
+    const activeStorageArea = syncStatus && syncStatus.storageArea ? syncStatus.storageArea : 'sync';
+    const activeData = activeStorageArea === 'local' ? (localData || {}) : (syncData || {});
+    const totalItems = syncStatus && typeof syncStatus.totalItems === 'number'
+      ? syncStatus.totalItems
+      : Object.keys(activeData).length;
+    const byteUsage = syncStatus && typeof syncStatus.byteUsage === 'number'
+      ? syncStatus.byteUsage
+      : JSON.stringify(activeData).length;
+    const activeQuotaBytes = activeStorageArea === 'local'
+      ? ((chrome && chrome.storage && chrome.storage.local && chrome.storage.local.QUOTA_BYTES) || 10485760)
+      : 102400;
+
     const noteCount = syncStatus && typeof syncStatus.noteCount === 'number'
       ? syncStatus.noteCount
-      : Object.keys(result).filter(k => k.startsWith('note:')).length;
+      : Object.keys(activeData).filter((k) => k.startsWith('note:')).length;
     
     const status = {
       timestamp: new Date().toISOString(),
       noteCount,
       totalItems,
       bytesUsed: byteUsage,
-      quotaBytes: 102400,
-      percentUsed: Math.round((byteUsage / 102400) * 100),
-      storageAvailable: byteUsage < 102400,
-      syncItemsUsed: syncStatus && typeof syncStatus.syncItemsUsed === 'number' ? syncStatus.syncItemsUsed : totalItems,
+      quotaBytes: activeQuotaBytes,
+      percentUsed: Math.round((byteUsage / activeQuotaBytes) * 100),
+      storageAvailable: byteUsage < activeQuotaBytes,
+      syncItemsUsed: syncStatus && typeof syncStatus.syncItemsUsed === 'number' ? syncStatus.syncItemsUsed : syncItems,
       syncItemLimit: syncStatus && typeof syncStatus.syncMaxItems === 'number' ? syncStatus.syncMaxItems : 512,
       syncQuotaReached: !!(syncStatus && syncStatus.syncQuotaReached),
-      activeStorageArea: syncStatus && syncStatus.storageArea ? syncStatus.storageArea : 'sync'
+      activeStorageArea,
+      syncBytesUsed,
+      syncTotalItems: syncItems
     };
     
     let output = JSON.stringify(status, null, 2);
     
     // Add human-readable summary before the JSON
-    const summary = `You've used ${status.percentUsed}% of your storage (${formatBytes(status.bytesUsed)} / ${formatBytes(status.quotaBytes)})\n\n`;
+    const summary = `Active storage area: ${status.activeStorageArea}\nYou've used ${status.percentUsed}% of your active storage (${formatBytes(status.bytesUsed)} / ${formatBytes(status.quotaBytes)})\n\nSync area still has ${status.syncTotalItems} items using ${formatBytes(status.syncBytesUsed)}.\n\n`;
     output = summary + output;
     
     // Add warning if capacity is at 85% or higher
-    if (status.percentUsed >= 85) {
+    if (status.activeStorageArea === 'sync' && status.percentUsed >= 85) {
       output = `⚠️ WARNING: Your space for storing synced notes is at ${status.percentUsed}% capacity. Unfortunately, this is a Chrome limitation.\n\n${output}`;
     }
     
