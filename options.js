@@ -387,7 +387,11 @@
   function persistStorageAreaPreference(areaName) {
     storageAreaPreference = areaName === 'local' ? 'local' : 'sync';
     try {
-      chrome.storage.local.set({ [STORAGE_AREA_PREFERENCE_KEY]: storageAreaPreference });
+      if (areaName === 'sync') {
+        // Sync is the default; remove any stored local override so other contexts start fresh
+        chrome.storage.local.remove([STORAGE_AREA_PREFERENCE_KEY]);
+      }
+      // 'local' is a transient in-memory fallback only — never written to storage
     } catch (e) {
       // Silent - storage routing should degrade gracefully
     }
@@ -399,8 +403,10 @@
       try {
         chrome.storage.local.get([STORAGE_AREA_PREFERENCE_KEY], (result) => {
           if (!chrome.runtime.lastError && result[STORAGE_AREA_PREFERENCE_KEY] === 'local') {
-            storageAreaPreference = 'local';
+            // A previous session left a stale 'local' override. Clear it.
+            chrome.storage.local.remove([STORAGE_AREA_PREFERENCE_KEY]);
           }
+          // Always start with sync; if it truly fails at runtime, the in-memory fallback handles it
           storageAreaPreferenceReady = true;
           resolve(storageAreaPreference);
         });

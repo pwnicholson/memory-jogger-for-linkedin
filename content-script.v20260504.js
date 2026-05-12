@@ -1,5 +1,5 @@
 (() => {
-  const BUILD_ID = '2026-05-07-23:10';
+  const BUILD_ID = '2026-05-10-19:00';
   const SCRIPT_FILE = 'content-script.v20260504.js';
   const DEV_LOGGING_KEY = 'mjliDevLoggingEnabled';
   const PAGE_DEBUG_LOGS_KEY = 'mjliPageDebugLogs';
@@ -95,7 +95,11 @@
   function persistStorageAreaPreference(areaName) {
     storageAreaPreference = areaName === 'local' ? 'local' : 'sync';
     try {
-      chrome.storage.local.set({ [STORAGE_AREA_PREFERENCE_KEY]: storageAreaPreference });
+      if (areaName === 'sync') {
+        // Sync is the default; remove any stored local override so other contexts start fresh
+        chrome.storage.local.remove([STORAGE_AREA_PREFERENCE_KEY]);
+      }
+      // 'local' is a transient in-memory fallback only — never written to storage
     } catch (e) {
       // Silent - storage routing should degrade gracefully
     }
@@ -107,8 +111,10 @@
       try {
         chrome.storage.local.get([STORAGE_AREA_PREFERENCE_KEY], (result) => {
           if (!chrome.runtime.lastError && result[STORAGE_AREA_PREFERENCE_KEY] === 'local') {
-            storageAreaPreference = 'local';
+            // A previous session left a stale 'local' override. Clear it.
+            chrome.storage.local.remove([STORAGE_AREA_PREFERENCE_KEY]);
           }
+          // Always start with sync; if it truly fails at runtime, the in-memory fallback handles it
           storageAreaPreferenceReady = true;
           resolve(storageAreaPreference);
         });
@@ -1351,7 +1357,14 @@
   }
 
   function renderForCurrentProfile() {
+    const pathname = window.location.pathname;
     const profileKey = getEntityKey();
+    
+    // Always log URL diagnostic info to help debug profile detection issues
+    const profileMatch = pathname.match(/\/in\/([^\/\?#]+)/i);
+    const companyMatch = pathname.match(/\/company\/([^\/\?#]+)/i);
+    appendPageDebugLog(`[URLCHECK] pathname=${pathname} profileMatch=${profileMatch ? profileMatch[1] : 'none'} companyMatch=${companyMatch ? companyMatch[1] : 'none'} resultKey=${profileKey}`);
+    
     debugLog('[Memory Jogger] Check page:', { profileKey, hasPanel: !!document.getElementById(ROOT_ID) });
 
     if (!profileKey) {

@@ -1,6 +1,6 @@
 console.log('[Memory Jogger] Service worker loaded');
 
-const BUILD_ID = '2026-05-07-23:35';
+const BUILD_ID = '2026-05-10-19:00';
 let storageAreaPreference = 'sync';
 const STORAGE_AREA_PREFERENCE_KEY = 'mjliStorageAreaPreference';
 const SYNC_BUCKET_PREFIX = 'mjli:bucket:v2:';
@@ -55,7 +55,11 @@ function getAllFromArea(areaName) {
 function persistStorageAreaPreference(areaName) {
   storageAreaPreference = areaName === 'local' ? 'local' : 'sync';
   try {
-    chrome.storage.local.set({ [STORAGE_AREA_PREFERENCE_KEY]: storageAreaPreference });
+    if (areaName === 'sync') {
+      // Sync is the default; remove any stored local override so other contexts start fresh
+      chrome.storage.local.remove([STORAGE_AREA_PREFERENCE_KEY]);
+    }
+    // 'local' is a transient in-memory fallback only — never written to storage
   } catch (e) {
     // Silent - diagnostics can continue without persistence
   }
@@ -66,8 +70,11 @@ function loadStorageAreaPreference() {
     try {
       chrome.storage.local.get([STORAGE_AREA_PREFERENCE_KEY], (result) => {
         if (!chrome.runtime.lastError && result[STORAGE_AREA_PREFERENCE_KEY] === 'local') {
-          storageAreaPreference = 'local';
+          // A previous session left a stale 'local' override. Clear it so all contexts
+          // start fresh on sync. 'local' is now in-memory only for the current session.
+          chrome.storage.local.remove([STORAGE_AREA_PREFERENCE_KEY]);
         }
+        // Always start with sync; if it truly fails at runtime, the in-memory fallback handles it
         resolve(storageAreaPreference);
       });
     } catch (e) {
@@ -342,6 +349,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       debugLogs = [];
       addLog('Logs cleared');
       sendResponse({ success: true });
+      return true;
+    }
+
+    if (request.action === 'switchToSync') {
+      getAllFromArea('sync').then((syncResult) => {
+        if (!syncResult.ok) {
+          addLog(`switchToSync failed: sync unavailable (${syncResult.error || 'unknown'})`, 'warn');
+          sendResponse({ success: false, error: `Sync storage unavailable: ${syncResult.error || 'unknown'}` });
+          return;
+        }
+        const syncNoteCount = Object.keys(extractNotesFromData(syncResult.data)).length;
+        persistStorageAreaPreference('sync');
+        addLog(`Manually switched to sync storage; found ${syncNoteCount} notes in sync`, 'info');
+        sendResponse({ success: true, noteCount: syncNoteCount });
+      });
       return true;
     }
   } catch (e) {

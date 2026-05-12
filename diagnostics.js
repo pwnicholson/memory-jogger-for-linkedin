@@ -106,6 +106,25 @@ async function getAllStorage() {
   }
 }
 
+async function recoverFromSync() {
+  const statusEl = document.getElementById('storage-status');
+  statusEl.textContent = 'Switching to sync storage...';
+  try {
+    const response = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'switchToSync' }, (r) => {
+        resolve(chrome.runtime.lastError ? { success: false, error: chrome.runtime.lastError.message } : (r || { success: false, error: 'No response' }));
+      });
+    });
+    if (response.success) {
+      statusEl.textContent = `✅ Switched to sync storage. Found ${response.noteCount} notes in sync.\n\nReload any open LinkedIn tab to see your notes restored.`;
+    } else {
+      statusEl.textContent = `❌ Could not switch to sync: ${response.error}`;
+    }
+  } catch (e) {
+    statusEl.textContent = `❌ Error: ${e.message}`;
+  }
+}
+
 async function clearAllStorage() {
   if (!confirm('Are you SURE? This will DELETE ALL NOTES. This cannot be undone.')) {
     return;
@@ -358,6 +377,7 @@ window.addEventListener('load', () => {
   document.getElementById('machine-info-btn').addEventListener('click', getMachineInfo);
   document.getElementById('storage-status-btn').addEventListener('click', checkStorageStatus);
   document.getElementById('all-storage-btn').addEventListener('click', getAllStorage);
+  document.getElementById('recover-sync-btn').addEventListener('click', recoverFromSync);
   document.getElementById('clear-storage-btn').addEventListener('click', clearAllStorage);
   document.getElementById('write-test-btn').addEventListener('click', writeTestData);
   document.getElementById('read-test-btn').addEventListener('click', readTestData);
